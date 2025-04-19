@@ -1,0 +1,16 @@
+we are 
+We’re building a web-based IPL Cricket Cards Game—a digital twist on the classic cricket card game. Players will be dealt a 5-card hand, choose a stat (like batting or bowling), and compete by comparing stats that have dynamic multipliers. These multipliers are determined by real or simulated IPL events
+Orange Cap & Purple Cap: The best batsman and bowler get a 1.2× boost (with others in top 5 getting a 1.1× boost).
+Top 4 Teams: Cards from teams in the top four get boosts from 1.4× down to 1.1× depending on their ranking.
+
+we will use convex db for this task.  which is connected and we are able to pull card stats in game 
+
+User journey:
+A fast-loading, minimal landing page with a “Play Now” button—no logins or heavy assets.
+On clicking, the user is taken to a ThreeJS-rendered canvas where the animated game board displays the card hand.
+each player gets 5 cards (at a time 4 players will play), each card shows stats of the player like   
+show team name, that will be shown on top of card and color of the card would be teams color.
+
+Each player takes turn to initiate their first hand. so a player will select a card and tap on the stat they would want to play with, all other players are required to throw in a card they feel could beat this players card with the same stat. 
+Next to card there would be three boosters orange, purple and teamrankone from Boosters table when they tap it their this hand will get booster for it as specified with the points earlier. all 4 players will have their own boosters then can use when they seem fit; each can be used just once per game.
+at the end, the player with most hands won will be the winner.
