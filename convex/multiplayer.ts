@@ -1,0 +1,630 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+import { Doc, Id } from "./_generated/dataModel";
+import { DatabaseReader, DatabaseWriter } from "./_generated/server";
+import { api } from "./_generated/api";
+import { Scheduler } from "convex/server"; // Correct import path for Scheduler
+
+// --- Type Definitions (Derived from Schema) ---
+// Using types derived from schema is generally safer
+type PlayerHandsMap = Record<string, Array<Id<"iplstats">>>;
+type PlayerScoresMap = Record<string, number>;
+type PlayerBoostersMap = Record<string, { orange: boolean, purple: boolean, teamrank: boolean }>;
+type TeamRankingsMap = Record<string, number>;
+type BoosterType = "orange" | "purple" | "teamrank";
+
+// Type for a single played card within a hand (matches schema)
+type PlayedCard = {
+    playerId: string;
+    cardId: Id<"iplstats">;
+    cardName: string;
+    boosterUsed?: BoosterType;
+    rawValue: number;
+    finalValue: number;
+};
+
+// Type for the current hand state (matches schema)
+type CurrentHandState = {
+    statSelector: string;
+    playedCards: PlayedCard[];
+    leadingCard?: {
+        playerId: string;
+        cardId: Id<"iplstats">;
+        cardName: string;
+        finalValue: number;
+    };
+};
+
+// Type for a completed hand entry (matches schema)
+type CompletedHandEntry = {
+    statSelector: string;
+    selectedStat: string;
+    playedCards: PlayedCard[];
+    winner: {
+        playerId: string;
+        cardId: Id<"iplstats">;
+        cardName: string;
+        finalValue: number;
+    } | null;
+};
+
+// --- Helper Functions ---
+
+// Function to shuffle an array (Fisher-Yates)
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// Type guard to check if a value is a valid stat key for iplstats
+function isValidStatKey(stat: string, card: Doc<"iplstats">): stat is keyof Doc<"iplstats"> {
+  // Add check to prevent accessing internal Convex fields like _id, _creationTime
+  return !stat.startsWith('_') && stat in card;
+}
+
+// Calculate Stat Value - Fetches card data
+async function calculateStatValue(
+  ctx: { db: DatabaseReader },
+  cardId: Id<"iplstats">,
+  stat: string,
+  booster: BoosterType | undefined | null,
+  lobby: Doc<"game_lobbies">,
+): Promise<{ rawValue: number, finalValue: number }> {
+
+  const card = await ctx.db.get(cardId);
+  if (!card) {
+    console.error(`[calculateStatValue] Card not found: ${cardId}`);
+    // Consider throwing an error here for makeMove to catch
+    return { rawValue: 0, finalValue: 0 };
+  }
+
+  // Use type guard before accessing potentially invalid stat key
+  if (!isValidStatKey(stat, card)) {
+     console.error(`[calculateStatValue] Invalid stat key '${stat}' for card ${cardId}`);
+     // Consider throwing an error here
+     return { rawValue: 0, finalValue: 0 };
+  }
+
+  // Safely access the stat value
+  const baseValueStrOrNum = card[stat];
+  let baseValue = typeof baseValueStrOrNum === 'string'
+    ? parseFloat(baseValueStrOrNum) || 0
+    : typeof baseValueStrOrNum === 'number' ? baseValueStrOrNum : 0; // Ensure it's a number
+
+  let multiplier = 1.0;
+  const orangeCapPlayer = lobby.orangeCapPlayer;
+  const purpleCapPlayer = lobby.purpleCapPlayer;
+  const teamRankings = lobby.teamRankings as TeamRankingsMap | undefined;
+
+  // Booster checks (logic remains the same)
+  const isOrangeCapPlayer = orangeCapPlayer === card.Player_Name;
+  const isBattingStat = ['Runs_Scored', 'Batting_Average', 'Batting_Strike_Rate', 'Centuries', 'Half_Centuries', 'Sixes', 'Fours'].includes(stat);
+  if (booster === 'orange' || (isOrangeCapPlayer && isBattingStat)) {
+    multiplier *= 1.2;
+  }
+  const isPurpleCapPlayer = purpleCapPlayer === card.Player_Name;
+  const isBowlingStat = ['Wickets_Taken', 'Economy_Rate', 'Bowling_Average', 'Bowling_Strike_Rate', 'Four_Wicket_Hauls', 'Five_Wicket_Hauls'].includes(stat);
+  if (booster === 'purple' || (isPurpleCapPlayer && isBowlingStat)) {
+    multiplier *= 1.2;
+  }
+  if (booster === 'teamrank' && card.team && teamRankings && teamRankings[card.team]) {
+    const rank = teamRankings[card.team];
+    if (rank === 1) multiplier *= 1.4;
+    else if (rank === 2) multiplier *= 1.3;
+    else if (rank === 3) multiplier *= 1.2;
+    else if (rank === 4) multiplier *= 1.1;
+  }
+
+  const finalValue = baseValue * multiplier;
+  return { rawValue: baseValue, finalValue };
+}
+
+// Determine Hand Winner Info - Returns structured winner info or null
+function determineHandWinnerInfo(hand: CurrentHandState | undefined | null, stat: string | undefined | null): CompletedHandEntry['winner'] { // Return type matches schema field
+    if (!hand || !hand.playedCards || hand.playedCards.length === 0 || !stat) {
+        console.warn("[determineHandWinnerInfo] Invalid input for determining winner.", { handExists: !!hand, stat });
+        return null;
+    }
+
+    const lowerIsBetter = [
+        "Economy_Rate",
+        "Bowling_Average",
+        "Bowling_Strike_Rate",
+    ].includes(stat);
+
+    let bestPlay: PlayedCard | null = null;
+    let bestValue = lowerIsBetter ? Infinity : -Infinity;
+
+    for (const play of hand.playedCards) {
+        // Use finalValue directly as it should be a number
+        const finalValue = play.finalValue;
+
+        if (lowerIsBetter) {
+            if (finalValue < bestValue) {
+                bestValue = finalValue;
+                bestPlay = play;
+            }
+        } else {
+            if (finalValue > bestValue) {
+                bestValue = finalValue;
+                bestPlay = play;
+            }
+        }
+    }
+
+    if (!bestPlay) {
+        console.warn("[determineHandWinnerInfo] Could not determine best play.");
+        return null;
+    }
+
+    // Return the structured winner info based on schema
+    return {
+        playerId: bestPlay.playerId,
+        cardId: bestPlay.cardId,
+        cardName: bestPlay.cardName,
+        finalValue: bestPlay.finalValue
+    };
+}
+
+// --- Mutations and Queries (createLobby, joinLobby, getLobbyData, getMyLobbies, startGame remain the same) ---
+
+export const createLobby = mutation({
+  args: {
+    playerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lobbyId = Math.random().toString(36).substring(2, 7).toUpperCase();
+
+    const initialPlayerBoosters: Record<string, { orange: boolean, purple: boolean, teamrank: boolean }> = {
+      [args.playerName]: { orange: true, purple: true, teamrank: true }
+    };
+    const initialPlayerScores: Record<string, number> = { [args.playerName]: 0 };
+
+    const newLobbyId = await ctx.db.insert("game_lobbies", {
+      lobbyId,
+      players: [args.playerName],
+      hostPlayerName: args.playerName, // Store the host
+      status: "waiting",
+      createdAt: Date.now(),
+      gameStarted: false,
+      // Initialize game state fields as optional or with defaults
+      currentPlayer: undefined,
+      gamePhase: undefined,
+      playerHands: undefined,
+      selectedStat: undefined,
+      currentHand: undefined,
+      completedHands: [],
+      playerScores: initialPlayerScores,
+      playerBoosters: initialPlayerBoosters,
+      orangeCapPlayer: undefined,
+      purpleCapPlayer: undefined,
+      teamRankings: undefined,
+      lastMoveTime: Date.now(),
+    });
+
+    return { lobbyId, id: newLobbyId }; // Return the generated lobbyId and the Convex _id
+  },
+});
+
+export const joinLobby = mutation({
+  args: {
+    lobbyId: v.string(),
+    playerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lobby = await ctx.db
+      .query("game_lobbies")
+      .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+      .first();
+
+    if (!lobby) throw new Error(`Lobby ${args.lobbyId} not found`);
+    if (lobby.gameStarted) throw new Error("Game already started");
+    if (lobby.players.length >= 4) throw new Error("Lobby is full");
+    if (lobby.players.includes(args.playerName)) return { success: true, lobbyId: args.lobbyId }; // Already joined
+
+    const updatedPlayers = [...lobby.players, args.playerName];
+
+    // Initialize scores and boosters for the joining player
+    const playerScores = (lobby.playerScores ?? {}) as Record<string, number>;
+    playerScores[args.playerName] = 0;
+
+    const playerBoosters = (lobby.playerBoosters ?? {}) as Record<string, { orange: boolean, purple: boolean, teamrank: boolean }>;
+    playerBoosters[args.playerName] = { orange: true, purple: true, teamrank: true };
+
+    await ctx.db.patch(lobby._id, {
+      players: updatedPlayers,
+      playerScores,
+      playerBoosters,
+      lastMoveTime: Date.now(),
+    });
+
+    return { success: true, lobbyId: args.lobbyId };
+  },
+});
+
+export const getLobbyData = query({
+  args: {
+    lobbyId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lobby = await ctx.db
+      .query("game_lobbies")
+      .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+      .first();
+    return lobby; // Return the full lobby doc or null
+  },
+});
+
+export const getMyLobbies = query({
+  args: {
+    playerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Use the by_player index - NOTE: This index checks if the player *array* exactly matches.
+    // A more robust approach might involve a separate "playerLobbies" table or filtering after fetching.
+    // For now, fetching all non-completed and filtering in memory is acceptable for small scale.
+    const lobbies = await ctx.db
+      .query("game_lobbies")
+      .filter(q => q.neq(q.field("status"), "completed"))
+      .filter(q => q.neq(q.field("status"), "abandoned")) // Also exclude abandoned
+      .collect();
+
+    // Filter in memory
+    const myLobbies = lobbies.filter(lobby => lobby.players.includes(args.playerName));
+    return myLobbies;
+  },
+});
+
+export const startGame = mutation({
+  args: {
+    lobbyId: v.string(),
+    playerName: v.string(), // Host starting the game
+    orangeCapPlayer: v.optional(v.string()),
+    purpleCapPlayer: v.optional(v.string()),
+    teamRankings: v.any(), // Use v.any() as defined in schema
+    availableCards: v.array(v.id("iplstats")), // Array of Card IDs
+  },
+  handler: async (ctx, args) => {
+    const lobby = await ctx.db
+      .query("game_lobbies")
+      .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+      .first();
+
+    if (!lobby) throw new Error(`Lobby ${args.lobbyId} not found`);
+    if (lobby.gameStarted) throw new Error("Game already started");
+    if (lobby.hostPlayerName !== args.playerName) throw new Error("Only the host can start the game");
+    if (lobby.players.length < 2) throw new Error("Need at least 2 players to start");
+
+    // --- Prepare Game Setup ---
+    let updatedPlayers = [...lobby.players];
+    const initialPlayerScores: Record<string, number> = { ...(lobby.playerScores as Record<string, number>) };
+    const initialPlayerBoosters: Record<string, { orange: boolean, purple: boolean, teamrank: boolean }> = { ...(lobby.playerBoosters as Record<string, { orange: boolean, purple: boolean, teamrank: boolean }>) };
+
+    // Fill remaining slots with bots
+    while (updatedPlayers.length < 4) {
+      const botName = `Bot ${updatedPlayers.length + 1}`;
+      updatedPlayers.push(botName);
+      initialPlayerScores[botName] = 0;
+      initialPlayerBoosters[botName] = { orange: true, purple: true, teamrank: true };
+    }
+
+    // --- Deal Cards ---
+    const cardsPerPlayer = 5;
+    const requiredCards = updatedPlayers.length * cardsPerPlayer;
+    if (args.availableCards.length < requiredCards) {
+      // TODO: Decide how to handle insufficient cards. Duplicate? Error? For now, error.
+      console.error(`Insufficient cards: ${args.availableCards.length} provided, ${requiredCards} needed.`);
+      throw new Error(`Not enough unique cards available to deal ${cardsPerPlayer} to ${updatedPlayers.length} players.`);
+    }
+
+    const shuffledCardIds = shuffleArray(args.availableCards);
+    const playerHands: Record<string, string[]> = {};
+    updatedPlayers.forEach((player, index) => {
+      const startIndex = index * cardsPerPlayer;
+      const hand = shuffledCardIds.slice(startIndex, startIndex + cardsPerPlayer);
+      playerHands[player] = hand;
+    });
+
+    // --- Update Lobby State for Game Start ---
+    await ctx.db.patch(lobby._id, {
+      players: updatedPlayers, // Include bots
+      playerScores: initialPlayerScores,
+      playerBoosters: initialPlayerBoosters,
+      playerHands: playerHands,
+      gameStarted: true,
+      status: "in_progress",
+      currentPlayer: updatedPlayers[0], // First player starts
+      gamePhase: "stat_selection",
+      completedHands: [], // Ensure it's reset
+      currentHand: undefined, // Ensure it's reset
+      selectedStat: undefined, // Ensure it's reset
+      orangeCapPlayer: args.orangeCapPlayer,
+      purpleCapPlayer: args.purpleCapPlayer,
+      teamRankings: args.teamRankings as Record<string, number>, // Store provided rankings
+      lastMoveTime: Date.now(),
+    });
+
+    console.log(`Game started in lobby ${args.lobbyId} by ${args.playerName}`);
+    return { success: true };
+  },
+});
+
+// --- Core Game Logic Mutation ---
+export const makeMove = mutation({
+  args: {
+    lobbyId: v.string(),
+    playerName: v.string(),
+    action: v.union(v.literal("select_stat"), v.literal("play_card")),
+    selectedStat: v.optional(v.string()),
+    selectedCardId: v.optional(v.id("iplstats")),
+    useBooster: v.optional(v.union(
+        v.literal("orange"),
+        v.literal("purple"),
+        v.literal("teamrank")
+    )),
+  },
+  handler: async (ctx, args) => {
+    const lobby = await ctx.db
+      .query("game_lobbies")
+      .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+      .first();
+
+    // --- Validation ---
+    if (!lobby) throw new Error(`[makeMove] Lobby ${args.lobbyId} not found`);
+    if (!lobby.gameStarted || lobby.status !== "in_progress") throw new Error("[makeMove] Game not active");
+    // Ensure currentPlayer is defined before comparing
+    if (!lobby.currentPlayer) throw new Error("[makeMove] Game state error: currentPlayer is not set.");
+    if (lobby.currentPlayer !== args.playerName) throw new Error(`[makeMove] Not ${args.playerName}'s turn (Current: ${lobby.currentPlayer})`);
+
+    // --- Prepare State (with type safety) ---
+    const playerHands = lobby.playerHands as PlayerHandsMap ?? {};
+    const playerBoosters = lobby.playerBoosters as PlayerBoostersMap ?? {};
+    const playerScores = lobby.playerScores as PlayerScoresMap ?? {};
+    const completedHands = lobby.completedHands as CompletedHandEntry[] ?? [];
+    const currentPlayer = lobby.currentPlayer; // Known to be string now
+    const currentPhase = lobby.gamePhase;
+    const currentHandState = lobby.currentHand as CurrentHandState | undefined;
+
+    // Object to collect state changes for the final patch
+    const stateUpdates: Partial<Doc<"game_lobbies">> = {
+        lastMoveTime: Date.now(),
+    };
+
+    // --- Action: Select Stat ---
+    if (args.action === "select_stat") {
+      if (currentPhase !== "stat_selection") throw new Error("[makeMove] Not the time to select a stat");
+      if (!args.selectedStat) throw new Error("[makeMove] No stat selected");
+      // TODO: Maybe validate selectedStat against a known list of valid stats?
+
+      stateUpdates.selectedStat = args.selectedStat;
+      stateUpdates.gamePhase = "card_selection";
+      // Turn does not advance
+      console.log(`[makeMove] Player ${args.playerName} selected stat: ${args.selectedStat}`);
+    }
+    // --- Action: Play Card ---
+    else if (args.action === "play_card") {
+      if (currentPhase !== "card_selection") throw new Error("[makeMove] Not the time to play a card");
+      if (!lobby.selectedStat) throw new Error("[makeMove] No stat has been selected for this hand");
+      if (!args.selectedCardId) throw new Error("[makeMove] No card selected");
+
+      const currentSelectedStat = lobby.selectedStat; // Known to be string now
+
+      const hand = playerHands[currentPlayer];
+      if (!hand || !hand.includes(args.selectedCardId)) throw new Error(`[makeMove] Player ${currentPlayer} does not have card ${args.selectedCardId}`);
+
+      const boosterToUse = args.useBooster ?? undefined;
+      if (boosterToUse) {
+          if (!playerBoosters[currentPlayer]) throw new Error(`[makeMove] Player ${currentPlayer} has no booster state.`);
+          if (!playerBoosters[currentPlayer][boosterToUse]) throw new Error(`[makeMove] Booster ${boosterToUse} not available or already used by ${currentPlayer}`);
+      }
+
+      // Fetch card and calculate value
+      const cardData = await ctx.db.get(args.selectedCardId);
+      if (!cardData) throw new Error(`[makeMove] Card data not found for ${args.selectedCardId}`);
+
+      const { rawValue, finalValue } = await calculateStatValue(
+          ctx, args.selectedCardId, currentSelectedStat, boosterToUse, lobby
+      );
+
+      const playedCardInfo: PlayedCard = {
+        playerId: currentPlayer,
+        cardId: args.selectedCardId,
+        cardName: cardData.Player_Name ?? "Unknown Card",
+        boosterUsed: boosterToUse,
+        rawValue: rawValue,
+        finalValue: finalValue,
+      };
+
+      // Update player's hand (remove played card)
+      const updatedHand = hand.filter(cardId => cardId !== args.selectedCardId);
+      playerHands[currentPlayer] = updatedHand;
+      stateUpdates.playerHands = playerHands; // Mark for update
+
+      // Update booster state if used
+      if (boosterToUse) {
+        playerBoosters[currentPlayer][boosterToUse] = false;
+        stateUpdates.playerBoosters = playerBoosters; // Mark for update
+      }
+
+      // Update currentHand in lobby state
+      let updatedCurrentHand: CurrentHandState;
+      if (!currentHandState) {
+          // First card played in this hand
+          updatedCurrentHand = {
+              statSelector: currentPlayer, // The player who plays the first card after stat selection initiated the comparison
+              playedCards: [playedCardInfo],
+              leadingCard: { // The first card is automatically the leader
+                  playerId: currentPlayer,
+                  cardId: args.selectedCardId,
+                  cardName: playedCardInfo.cardName,
+                  finalValue: finalValue
+              }
+          };
+      } else {
+          // Subsequent card played in this hand
+          updatedCurrentHand = {
+              ...currentHandState,
+              playedCards: [...currentHandState.playedCards, playedCardInfo],
+          };
+          // Update leading card
+          const currentLeading = updatedCurrentHand.leadingCard;
+          const lowerIsBetter = ["Economy_Rate", "Bowling_Average", "Bowling_Strike_Rate"].includes(currentSelectedStat);
+          let isNewLead = false;
+          if (!currentLeading) {
+              isNewLead = true; // Should not happen if currentHandState exists, but safe check
+          } else {
+              if (lowerIsBetter && finalValue < currentLeading.finalValue) isNewLead = true;
+              if (!lowerIsBetter && finalValue > currentLeading.finalValue) isNewLead = true;
+          }
+          if (isNewLead) {
+              updatedCurrentHand.leadingCard = { playerId: currentPlayer, cardId: args.selectedCardId, cardName: playedCardInfo.cardName, finalValue: finalValue };
+          }
+      }
+      stateUpdates.currentHand = updatedCurrentHand;
+
+      // --- Advance Turn & Check Hand/Game End ---
+      const currentPlayerIndex = lobby.players.indexOf(currentPlayer);
+      const nextPlayerIndex = (currentPlayerIndex + 1) % lobby.players.length;
+      stateUpdates.currentPlayer = lobby.players[nextPlayerIndex];
+
+      console.log(`[makeMove] Player ${currentPlayer} played card ${args.selectedCardId}. Next turn: ${stateUpdates.currentPlayer}`);
+
+      // Check if hand ended (everyone played)
+      if (updatedCurrentHand.playedCards.length === lobby.players.length) {
+          console.log(`[makeMove] Hand ended. Stat: ${currentSelectedStat}`);
+          const winnerInfo = determineHandWinnerInfo(updatedCurrentHand, currentSelectedStat);
+
+          let handWinnerId: string | null = null;
+          if (winnerInfo) {
+              handWinnerId = winnerInfo.playerId;
+              console.log(`[makeMove] Hand winner: ${handWinnerId} with card ${winnerInfo.cardName} (${winnerInfo.finalValue})`);
+              playerScores[handWinnerId] = (playerScores[handWinnerId] ?? 0) + 1;
+              stateUpdates.playerScores = playerScores; // Mark for update
+          } else {
+              console.warn("[makeMove] Could not determine hand winner (draw or error). No score awarded.");
+              // If no winner (draw), the player who selected the stat starts next? Or player 0?
+              // For now, let's default to player 0 if no winner, but winner gets priority.
+          }
+
+          const completedHandEntry: CompletedHandEntry = {
+              statSelector: updatedCurrentHand.statSelector,
+              selectedStat: currentSelectedStat,
+              playedCards: updatedCurrentHand.playedCards,
+              winner: winnerInfo // Store the detailed winner info or null
+          };
+          stateUpdates.completedHands = [...completedHands, completedHandEntry];
+
+          // Reset for next hand
+          stateUpdates.currentHand = undefined;
+          stateUpdates.selectedStat = undefined;
+          // Winner of the hand starts the next stat selection, otherwise default to player 0
+          stateUpdates.currentPlayer = handWinnerId ?? lobby.players[0];
+
+          // Check if game ended (e.g., 5 hands completed)
+          const handsPlayed = completedHands.length + 1; // We just finished one
+          const totalHands = 5; // TODO: Make this configurable or based on initial deal?
+          if (handsPlayed >= totalHands) {
+              console.log(`[makeMove] Game ended after ${handsPlayed} hands.`);
+              stateUpdates.gamePhase = "game_over";
+              stateUpdates.status = "completed";
+              stateUpdates.currentPlayer = undefined; // No current player in completed state
+          } else {
+              // Start next hand
+              stateUpdates.gamePhase = "stat_selection";
+              console.log(`[makeMove] Starting Hand ${handsPlayed + 1}. Player ${stateUpdates.currentPlayer} selects stat.`);
+          }
+      } else {
+        // Hand continues, next player plays a card
+        stateUpdates.gamePhase = "card_selection";
+      }
+    }
+    // --- Invalid Action ---
+    else {
+        throw new Error("[makeMove] Invalid action specified");
+    }
+
+    // Apply all updates
+    await ctx.db.patch(lobby._id, stateUpdates);
+    console.log(`[makeMove] Patched lobby ${lobby.lobbyId} with updates:`, stateUpdates);
+
+    // --- Trigger Bot Move If Necessary ---
+    const nextPlayerName = stateUpdates.currentPlayer;
+    // Check if the *next* player is a bot and the game is still in progress
+    if (nextPlayerName?.startsWith("Bot ") && stateUpdates.status !== "completed" && stateUpdates.gamePhase !== "game_over") {
+       console.log(`[makeMove] Scheduling bot move for ${nextPlayerName}`);
+       // Schedule the bot move check to run shortly after the current mutation finishes
+       await ctx.scheduler.runAfter(500, api.multiplayer.checkBotMoves, { lobbyId: args.lobbyId });
+    }
+
+    return { success: true };
+  },
+});
+
+// Check Bot Moves - Runs as a separate mutation, often scheduled
+export const checkBotMoves = mutation({
+    args: { lobbyId: v.string() },
+    handler: async (ctx, args) => {
+        const lobby = await ctx.db
+          .query("game_lobbies")
+          .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+          .first();
+
+        // Extra checks: Game active? Is it actually a bot's turn?
+        if (!lobby || lobby.status !== 'in_progress' || !lobby.currentPlayer?.startsWith("Bot ")) {
+            // Log only if lobby exists, otherwise it might be noise during cleanup
+            if (lobby) {
+                console.log(`[checkBotMoves] No action needed for lobby ${args.lobbyId}. Status: ${lobby.status}, Player: ${lobby.currentPlayer}`);
+            }
+            return; // Not a bot's turn or game not active
+        }
+
+        const botName = lobby.currentPlayer;
+        console.log(`[checkBotMoves] Triggered for bot ${botName} in lobby ${args.lobbyId}, phase: ${lobby.gamePhase}`);
+
+        // --- Basic Bot Decision Logic ---
+        try {
+            if (lobby.gamePhase === "stat_selection") {
+                const stats = ["Runs_Scored", "Wickets_Taken", "Batting_Strike_Rate", "Economy_Rate", "Sixes", "Fours"]; // Example stats
+                // TODO: Improve bot stat selection logic (e.g., based on hand)
+                const randomStat = stats[Math.floor(Math.random() * stats.length)];
+                console.log(`[checkBotMoves] Bot ${botName} choosing stat: ${randomStat}`);
+                // Use internalMutation to avoid scheduling loop issues if makeMove calls scheduler again immediately
+                await ctx.scheduler.runAfter(0, api.multiplayer.makeMove, { // Run immediately after this transaction
+                    lobbyId: args.lobbyId,
+                    playerName: botName,
+                    action: "select_stat",
+                    selectedStat: randomStat,
+                });
+            } else if (lobby.gamePhase === "card_selection") {
+                const playerHands = lobby.playerHands as PlayerHandsMap;
+                const botHand = playerHands?.[botName];
+                if (botHand && botHand.length > 0) {
+                    // TODO: Improve bot card selection logic (e.g., based on stat, boosters)
+                    const cardToPlay = botHand[0]; // Play the first card
+                    console.log(`[checkBotMoves] Bot ${botName} playing card: ${cardToPlay}`);
+                    // TODO: Add booster logic for bot?
+                    await ctx.scheduler.runAfter(0, api.multiplayer.makeMove, { // Run immediately after this transaction
+                        lobbyId: args.lobbyId,
+                        playerName: botName,
+                        action: "play_card",
+                        selectedCardId: cardToPlay,
+                        // useBooster: undefined // TODO: Add bot booster logic
+                    });
+                } else {
+                    console.error(`[checkBotMoves] Bot ${botName} in lobby ${args.lobbyId} has no cards to play!`);
+                    // What should happen here? Mark player as skipped? Forfeit? Error state?
+                    // For now, log error and the bot turn might get stuck.
+                }
+            } else {
+                 console.log(`[checkBotMoves] Bot ${botName} has nothing to do in phase ${lobby.gamePhase}`);
+            }
+        } catch (error: any) { // Catch potential errors during bot's makeMove call
+            console.error(`[checkBotMoves] Error during bot move for ${botName} in lobby ${args.lobbyId}:`, error);
+            // Optional: Try to recover or mark lobby as error state?
+        }
+    }
+}); 

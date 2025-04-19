@@ -27,7 +27,9 @@ export default defineSchema({
     Not_Outs: v.number(),
     Runs_Conceded: v.number(),
     type: v.optional(v.string()),
-  }),
+  })
+  .searchIndex("search_player_name", { searchField: "Player_Name" })
+  .searchIndex("search_team", { searchField: "team" }),
   
   boosters: defineTable({
     Orange_Cap: v.string(),
@@ -77,4 +79,83 @@ export default defineSchema({
     status: v.string(), // "waiting" | "in_progress" | "completed"
     created_at: v.number(),
   }),
+  
+  // New table for multiplayer lobbies
+  game_lobbies: defineTable({
+    lobbyId: v.string(),
+    players: v.array(v.string()),
+    hostPlayerName: v.string(),
+    status: v.union(
+      v.literal("waiting"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("abandoned")
+    ),
+    gameStarted: v.boolean(),
+    createdAt: v.number(),
+    lastMoveTime: v.optional(v.number()),
+    currentPlayer: v.optional(v.string()),
+    gamePhase: v.optional(v.union(
+      v.literal("stat_selection"),
+      v.literal("card_selection"),
+      v.literal("game_over")
+    )),
+    playerHands: v.optional(v.any()),
+    selectedStat: v.optional(v.string()),
+    currentHand: v.optional(v.object({
+      statSelector: v.string(),
+      playedCards: v.array(v.object({
+        playerId: v.string(),
+        cardId: v.id("iplstats"),
+        cardName: v.string(),
+        boosterUsed: v.optional(v.union(v.literal("orange"), v.literal("purple"), v.literal("teamrank"))),
+        rawValue: v.number(),
+        finalValue: v.number()
+      })),
+      leadingCard: v.optional(v.object({
+        playerId: v.string(),
+        cardId: v.id("iplstats"),
+        cardName: v.string(),
+        finalValue: v.number()
+      }))
+    })),
+    completedHands: v.optional(v.array(
+      v.object({
+        statSelector: v.string(),
+        selectedStat: v.string(),
+        playedCards: v.array(v.object({
+          playerId: v.string(),
+          cardId: v.id("iplstats"),
+          cardName: v.string(),
+          boosterUsed: v.optional(v.union(v.literal("orange"), v.literal("purple"), v.literal("teamrank"))),
+          rawValue: v.number(),
+          finalValue: v.number()
+        })),
+        winner: v.union(
+          v.object({
+            playerId: v.string(),
+            cardId: v.id("iplstats"),
+            cardName: v.string(),
+            finalValue: v.number()
+          }),
+          v.null()
+        )
+      })
+    )),
+    playerScores: v.optional(v.any()),
+    playerBoosters: v.optional(v.any()),
+    orangeCapPlayer: v.optional(v.string()),
+    purpleCapPlayer: v.optional(v.string()),
+    teamRankings: v.optional(v.any()),
+  })
+  .index("by_lobbyId", ["lobbyId"])
+  .index("by_player", ["players"]),
+  
+  teamrankings: defineTable({
+    RANK: v.number(),
+    team_ranking: v.string(),
+  }),
 });
+
+// Note: Removed the helper type/constants that were causing issues.
+// Using v.any() requires careful handling in mutations to ensure the correct structure.

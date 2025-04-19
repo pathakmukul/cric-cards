@@ -1,0 +1,74 @@
+ let's synchronize the game state using Convex as the single source of truth. The core idea is to stop relying on the local useGameStore for game logic during multiplayer and instead use the Convex game_lobbies document state, driven by mutations.
+Here's the plan:
+Phase 1: Backend Enhancements (Convex)
+Solidify game_lobbies State: Ensure the game_lobbies table schema in convex/schema.ts contains all necessary fields to represent the entire game state:
+players: Array<string>
+currentPlayer: string (name of the player whose turn it is)
+gamePhase: string ("stat_selection", "card_selection", "resolution", "game_over")
+playerHands: Record<string, Array<Id<"iplstats">>> (Map player name to their card IDs) - Crucial
+selectedStat: optional<string>
+currentHand: optional<object> (details below)
+completedHands: optional<Array<object>> (history of previous hands)
+playerScores: optional<Record<string, number>>
+playerBoosters: optional<Record<string, object>> (available boosters per player)
+orangeCapPlayer, purpleCapPlayer, teamRankings: optional fields storing booster info for the game.
+status: string ("waiting", "in_progress", "completed")
+gameStarted: boolean
+(Other fields like lobbyId, createdAt, lastMoveTime)
+Enhance startGame Mutation (convex/multiplayer.ts):
+Shuffle the availableCards passed in.
+Deal cards once to all players (including bots) and store the result in the playerHands field of the lobby document. Each player gets 5 cards (ensure enough cards, maybe duplicate if necessary as the old dealCards did).
+Initialize playerScores to 0 for all players.
+Initialize playerBoosters for all players (e.g., { orange: true, purple: true, teamrank: true }).
+Set initial currentPlayer to players[0].
+Set initial gamePhase to "stat_selection".
+Set gameStarted to true and status to "in_progress".
+Store orangeCapPlayer, purpleCapPlayer, teamRankings passed in arguments.
+Refactor makeMove Mutation (convex/multiplayer.ts): This becomes the core game engine.
+Input: lobbyId, playerName, action ("select_stat" or "play_card"), selectedStat?, selectedCardId?, useBooster?.
+Validation: Check if it's the correct playerName's turn (lobby.currentPlayer), if the action is valid for the current lobby.gamePhase, if the player has the selectedCardId in their playerHands, if the useBooster is available in playerBoosters. Throw errors if invalid.
+State Updates:
+If select_stat: Update lobby.selectedStat, change lobby.gamePhase to "card_selection". (Turn does not advance yet).
+If play_card:
+Remove selectedCardId from lobby.playerHands[playerName].
+Mark useBooster as used in lobby.playerBoosters[playerName] if applicable.
+Calculate the finalValue using the backend calculateStatValue helper (ensure this helper exists and uses card data correctly, perhaps fetching card data based on ID if needed).
+Add the played card info (playerId, cardId, boosterUsed, finalValue) to lobby.currentHand.playedCards. Initialize lobby.currentHand if it's the first card of the hand.
+Update lobby.currentHand.leadingCard based on finalValue and selectedStat (higher is better, except for Economy/Averages).
+Advance lobby.currentPlayer to the next player in the lobby.players array.
+Check for Hand End: If lobby.currentHand.playedCards.length === lobby.players.length:
+Determine winner from lobby.currentHand.leadingCard.
+Increment lobby.playerScores[winner].
+Move the completed lobby.currentHand object into the lobby.completedHands array.
+Reset lobby.currentHand to undefined.
+Reset lobby.selectedStat to undefined.
+Set lobby.currentPlayer to the winner.
+Check for Game End: If lobby.completedHands.length >= 5: Set lobby.gamePhase to "game_over" and lobby.status to "completed".
+Else (game not over): Set lobby.gamePhase to "stat_selection".
+Else (hand not over): Keep lobby.gamePhase as "card_selection".
+DB Patch: Apply all accumulated state changes to the lobby document using ctx.db.patch.
+Verify getLobbyData Query (convex/multiplayer.ts): Ensure it returns the entire lobby document, including the nested state like playerHands, currentHand, etc.
+Phase 2: Frontend Adaptation (React)
+Primary Game Component (GamePage.tsx or similar):
+Get lobbyId (from localStorage or route).
+Get playerName (from localStorage).
+Use useQuery(api.multiplayer.getLobbyData, { lobbyId }) as the single source of truth for game state.
+Use useMutation(api.multiplayer.makeMove) for player actions.
+Use useMutation(api.multiplayer.checkBotMoves) to trigger bot turns.
+Rendering based on lobbyData:
+Display current player, game phase, scores, etc., directly from lobbyData.
+Player Hand: Render cards only for the current user: lobbyData.playerHands[playerName]. Fetch card details using the IDs if necessary (or pass basic card info during dealing).
+Opponent Hands: Render placeholders (e.g., card backs) for other players based on the count of cards in lobbyData.playerHands[otherPlayerName].
+Played Cards: Render the cards currently in lobbyData.currentHand.playedCards.
+UI Controls: Show stat selection buttons only if lobbyData.gamePhase === 'stat_selection' and lobbyData.currentPlayer === playerName. Show card selection/booster buttons only if lobbyData.gamePhase === 'card_selection' and lobbyData.currentPlayer === playerName.
+Connecting Actions:
+When the player clicks a stat/card/booster, call the makeMove mutation with the appropriate parameters (lobbyId, playerName, action type, IDs, etc.).
+Do not modify local state directly (like useGameStore used to). Rely on the useQuery to update the UI when the backend state changes.
+Triggering Bot Turns:
+Use a useEffect hook that watches lobbyData.
+Inside the effect, check if lobbyData.currentPlayer starts with "Bot ".
+If it is a bot's turn, call the checkBotMoves mutation (perhaps with a small delay for realism). Add safeguards to prevent multiple calls if the effect runs rapidly.
+Cleanup: Remove the old useGameStore or strip it down to only hold non-multiplayer-related state if any exists.
+Implementation Order:
+It's generally best to implement the backend changes first (Steps 1-4) and test them using the Convex dashboard or temporary mutations if needed. Then, adapt the frontend (Steps 5-9) to consume and interact with the authoritative backend state.
+This plan establishes the Convex backend as the central coordinator, ensuring all players see the same game state and interact with the same set of rules enforced by the makeMove mutation.

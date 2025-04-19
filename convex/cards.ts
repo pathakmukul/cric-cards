@@ -1,5 +1,6 @@
 import { query } from './_generated/server';
 import { v } from 'convex/values';
+import { Doc, Id } from './_generated/dataModel';
 
 // Get all player cards from the database
 export const getAll = query({
@@ -86,5 +87,23 @@ export const getTeamRankings = query({
         { _id: 'rank4', team_ranking: 'Delhi Capitals', RANK: 4 }
       ];
     }
+  },
+});
+
+// Get full details for a specific list of card IDs
+export const getCardDetails = query({
+  args: {
+    cardIds: v.array(v.id("iplstats"))
+  },
+  handler: async (ctx, args) => {
+    // Fetch each card document. Use Promise.all for parallel fetching.
+    const cardDetails = await Promise.all(
+      args.cardIds.map(cardId => ctx.db.get(cardId))
+    );
+    
+    // Filter out any null results (if an ID didn't exist)
+    // and return the array of card documents.
+    // Explicitly type the result to match frontend expectations if needed.
+    return cardDetails.filter(card => card !== null) as Doc<"iplstats">[];
   },
 });

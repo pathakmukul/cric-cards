@@ -14,8 +14,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as cards from "../cards.js";
-import type * as game from "../game.js";
-import type * as lobby from "../lobby.js";
+import type * as multiplayer from "../multiplayer.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -27,8 +26,7 @@ import type * as lobby from "../lobby.js";
  */
 declare const fullApi: ApiFromModules<{
   cards: typeof cards;
-  game: typeof game;
-  lobby: typeof lobby;
+  multiplayer: typeof multiplayer;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,
