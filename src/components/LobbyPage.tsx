@@ -102,8 +102,10 @@ export default function LobbyPage() {
 
   useEffect(() => {
     if (activeLobbyData && activeLobbyData.gameStarted) {
-      console.log(`Game started (lobby ${activeLobbyId}), navigating ${playerName} to /game`);
-      navigate('/game');
+      // Include player name in URL for better testing in multiple tabs
+      const gameUrl = `/multiplayer?player=${encodeURIComponent(playerName)}`;
+      console.log(`Game started (lobby ${activeLobbyId}), navigating ${playerName} to ${gameUrl}`);
+      navigate(gameUrl);
     }
   }, [activeLobbyData, navigate, activeLobbyId, playerName]);
   
@@ -123,17 +125,19 @@ export default function LobbyPage() {
       setError('');
       setIsCreating(true);
       
-      const tempPlayerId = `player_${Date.now()}`;
-      
       const result = await createLobbyMut({
         playerName: playerName, 
       });
       
       const lobbyId = result.lobbyId;
       
+      // Store in localStorage
       localStorage.setItem('cricCards_playerName', playerName);
       localStorage.setItem('cricCards_lobbyId', lobbyId);
       localStorage.setItem('cricCards_isHost', 'true');
+      
+      // Add player name to URL for better testing in multiple tabs
+      const gameUrl = `/multiplayer?player=${encodeURIComponent(playerName)}`;
       
       setActiveLobbyId(lobbyId);
     } catch (err: any) {
@@ -172,12 +176,21 @@ export default function LobbyPage() {
         playerName 
       });
       
+      // Store in localStorage
       localStorage.setItem('cricCards_playerName', playerName);
       localStorage.setItem('cricCards_lobbyId', code);
       localStorage.setItem('cricCards_isHost', 'false');
       
+      // Add player name to URL for better testing in multiple tabs
+      const gameUrl = `/multiplayer?player=${encodeURIComponent(playerName)}`;
+      
       setActiveLobbyId(code);
       setLobbyCodeToJoin('');
+      
+      // Navigate with the player parameter
+      if (activeLobbyData?.gameStarted) {
+        navigate(gameUrl);
+      }
     } catch (err: any) {
       setError(`Failed to join lobby ${code}: ${err.message || err}`);
       console.error(err);
@@ -273,8 +286,28 @@ export default function LobbyPage() {
   }
   
   if (activeLobbyId && activeLobbyData) {
-    const isHost = localStorage.getItem('cricCards_isHost') === 'true';
+    // ONLY the first player in the array is the host - this is the definitive check
+    const isFirstPlayer = activeLobbyData?.players?.[0] === playerName;
+    const isHost = isFirstPlayer; // Only use this check, ignore localStorage
+    
+    // Update localStorage to match the server state
+    if (isFirstPlayer) {
+      localStorage.setItem('cricCards_isHost', 'true');
+    } else {
+      localStorage.setItem('cricCards_isHost', 'false');
+    }
+    
     const canStart = activeLobbyData?.players?.length >= 2;
+    
+    // Debug logging
+    console.log('Lobby render state:', {
+      isFirstPlayer,
+      isHost,
+      canStart,
+      playersCount: activeLobbyData?.players?.length,
+      playerName,
+      allPlayers: activeLobbyData?.players
+    });
     
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">

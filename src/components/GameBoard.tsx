@@ -8,7 +8,7 @@ import CardHand from './CardHand';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-interface BoosterButtonProps {
+export interface BoosterButtonProps {
   type: 'orange' | 'purple' | 'teamrank';
   isActive: boolean;
   isAvailable: boolean;
@@ -153,7 +153,7 @@ const PlayedCardDisplay = ({
   );
 };
 
-const BoosterButton = ({ type, isActive, isAvailable, onClick }: BoosterButtonProps) => {
+export const BoosterButton = ({ type, isActive, isAvailable, onClick }: BoosterButtonProps) => {
   const getBoosterColors = () => {
     switch (type) {
       case 'orange':

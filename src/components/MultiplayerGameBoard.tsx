@@ -6,8 +6,11 @@ import { api } from '../../convex/_generated/api'; // Import Convex API
 import { Id, Doc } from '../../convex/_generated/dataModel'; // Import Convex types
 import MultiplayerCardHand from './MultiplayerCardHand';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Loader2, AlertTriangle, LogOut, Trophy } from 'lucide-react'; // Added icons
+
+// Import BoosterButton from GameBoard
+import { BoosterButton } from './GameBoard';
 
 // Type definitions (can be shared or defined here)
 type BoosterType = "orange" | "purple" | "teamrank";
@@ -51,6 +54,18 @@ const getTeamColor = (team?: string): string => {
     'Lucknow Super Giants': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#1e40af';
+};
+
+// Helper to format game phase for display
+const formatGamePhase = (phase: string): string => {
+  switch (phase) {
+    case 'waiting': return 'Waiting for Players';
+    case 'stat_selection': return 'Select Stat';
+    case 'card_selection': return 'Select Card';
+    case 'round_end': return 'Round End';
+    case 'game_over': return 'Game Over';
+    default: return phase.replace(/_/g, ' ');
+  }
 };
 
 const formatStatLabel = (statKey: string): string => {
@@ -147,66 +162,51 @@ const PlayedCardDisplay = ({
   );
 };
 
-interface BoosterButtonProps {
-  type: BoosterType;
-  isActive: boolean;
-  isAvailable: boolean;
-  onClick: () => void;
-}
-
-const BoosterButton = ({ type, isActive, isAvailable, onClick }: BoosterButtonProps) => {
-    const getBoosterColors = () => {
-        switch (type) {
-            case 'orange': return { bg: isActive ? 'bg-orange-500' : 'bg-orange-700', ring: 'ring-orange-300', hover: 'hover:bg-orange-600', disabled: 'bg-orange-900' };
-            case 'purple': return { bg: isActive ? 'bg-purple-500' : 'bg-purple-700', ring: 'ring-purple-300', hover: 'hover:bg-purple-600', disabled: 'bg-purple-900' };
-            case 'teamrank': return { bg: isActive ? 'bg-blue-500' : 'bg-blue-700', ring: 'ring-blue-300', hover: 'hover:bg-blue-600', disabled: 'bg-blue-900' };
-            default: return { bg: 'bg-gray-700', ring: 'ring-gray-300', hover: 'hover:bg-gray-600', disabled: 'bg-gray-900' }; // Fallback
-        }
-    };
-  const colors = getBoosterColors();
-  const icons = { orange: '🏏', purple: '🎯', teamrank: '👑' };
-
-  return (
-    <motion.button
-      whileHover={{ scale: isAvailable ? 1.1 : 1 }}
-      whileTap={{ scale: isAvailable ? 0.95 : 1 }}
-      className={`w-12 h-12 rounded-full ${isAvailable ? `${colors.bg} ${colors.hover}` : colors.disabled} flex items-center justify-center text-white text-xl ${isActive ? `ring-4 ${colors.ring}` : ''} transition-colors duration-200 ${!isAvailable && 'opacity-50 cursor-not-allowed'}`}
-      onClick={isAvailable ? onClick : undefined}
-      disabled={!isAvailable}
-      title={`${type} booster ${isAvailable ? '(Available)' : '(Used)'}`}
-    >
-      {icons[type]}
-    </motion.button>
-  );
-};
+// BoosterButton is now imported from GameBoard.tsx
 
 
 // --- Main Multiplayer Game Board Component ---
 
-// Explicitly define the props interface for MultiplayerCardHand (must match the one inside the component file)
+// Define the interface for MultiplayerCardHand props
 interface MultiplayerCardHandProps {
   cards: PlayerCardData[];
   onCardSelect: (cardId: Id<"iplstats">) => void;
+  onStatSelect?: (statKey: string) => void;
   isSelectable: boolean;
+  gamePhase?: string;
+  currentPlayer?: string;
+  selectedStat?: string;
 }
 
 export default function MultiplayerGameBoard() {
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-  const [activeBooster, setActiveBooster] = useState<BoosterType | null>(null); // Local UI state for booster selection
+  // Get URL parameters and localStorage values
+  const { lobbyId: lobbyIdParam } = useParams();
+  const location = useLocation();
+  const playerNameFromUrl = new URLSearchParams(location.search).get('player');
+  const lobbyIdFromStorage = typeof window !== 'undefined' ? localStorage.getItem('cricCards_lobbyId') : '';
+  const playerNameFromStorage = typeof window !== 'undefined' ? localStorage.getItem('cricCards_playerName') : '';
+  // Use param, then storage, then fallback
+  const lobbyId = lobbyIdParam || lobbyIdFromStorage || '';
+  const [playerName, setPlayerName] = useState<string>(playerNameFromUrl || playerNameFromStorage || '');
 
-  // --- Get Player and Lobby Info ---
-  const lobbyId = useMemo(() => localStorage.getItem('cricCards_lobbyId'), []);
-  const playerName = useMemo(() => localStorage.getItem('cricCards_playerName'), []);
-
+  // Redirect to lobby if missing info
   useEffect(() => {
     if (!lobbyId || !playerName) {
-      console.error("Missing lobbyId or playerName in localStorage. Redirecting.");
-      navigate('/lobby'); // Redirect if essential info is missing
+      setTimeout(() => {
+        navigate('/lobby');
+      }, 1000);
     }
   }, [lobbyId, playerName, navigate]);
+  const [selectedStat, setSelectedStat] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<Id<"iplstats"> | null>(null);
+  const [activeBooster, setActiveBooster] = useState<BoosterType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId] = useState(() => Math.random().toString(36).substring(2, 10)); // Generate a random session ID
+  const [timeLeft, setTimeLeft] = useState<number>(15); // Timer for turns
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- Convex Hooks ---
+  // --- Get Player and Lobby Info ---
   const lobbyData = useQuery(api.multiplayer.getLobbyData, lobbyId ? { lobbyId } : "skip");
   const makeMove = useMutation(api.multiplayer.makeMove);
   // checkBotMoves is triggered by the backend scheduler via makeMove, no need to call from frontend
@@ -216,7 +216,9 @@ export default function MultiplayerGameBoard() {
     if (lobbyData && playerName && lobbyData.playerHands) {
       // Ensure playerHands is treated as the correct map type
       const handsMap = lobbyData.playerHands as PlayerHandsMap;
-      return handsMap[playerName] || [];
+      const playerCards = handsMap[playerName] || [];
+      console.log(`[Player Cards] ${playerName} has ${playerCards.length} cards:`, playerCards);
+      return playerCards;
     }
     return [];
   }, [lobbyData, playerName]);
@@ -230,24 +232,65 @@ export default function MultiplayerGameBoard() {
   // --- Derived State from Lobby Data ---
   const gamePhase = lobbyData?.gamePhase;
   const currentPlayer = lobbyData?.currentPlayer;
-  const selectedStat = lobbyData?.selectedStat; // Stat chosen for the hand
   const players = lobbyData?.players ?? [];
   const playerScores = (lobbyData?.playerScores as PlayerScoresMap) ?? {};
   const playerBoosters = (lobbyData?.playerBoosters as PlayerBoostersMap) ?? {};
-  const currentHandPlayedCards = lobbyData?.currentHand?.playedCards ?? [];
-  const leadingCardInfo = lobbyData?.currentHand?.leadingCard; // Can be object or undefined
+  const playerHands = (lobbyData?.playerHands as PlayerHandsMap) ?? {};
+  const userBoosters = playerBoosters[playerName] || { orange: false, purple: false, teamrank: false };
   const isMyTurn = currentPlayer === playerName;
-  const userBoosters = playerBoosters[playerName ?? ''] ?? { orange: false, purple: false, teamrank: false };
+  const currentHandPlayedCards = lobbyData?.currentHand?.playedCards || [];
   const gameOver = gamePhase === 'game_over';
-  const gameStatus = lobbyData?.status; // "waiting", "in_progress", "completed"
+  const leadingCardInfo = lobbyData?.currentHand?.leadingCard; // Can be object or undefined
+
+  // Log gamePhase whenever lobbyData updates
+  useEffect(() => {
+    if (lobbyData) {
+      console.log('[Debug] Lobby updated. Game phase:', lobbyData.gamePhase);
+    }
+  }, [lobbyData]);
+
+  // Log game state for debugging
+  useEffect(() => {
+    console.log('Game State Update:', {
+      playerName,
+      currentPlayer,
+      isMyTurn,
+      gamePhase,
+      selectedStat,
+      cardsCount: userCardIds.length,
+      cardsLoaded: !!userHandCardsData
+    });
+  }, [playerName, currentPlayer, isMyTurn, gamePhase, selectedStat, userCardIds, userHandCardsData]);
+
+  // Log the gameOver variable value
+  useEffect(() => {
+    console.log('[Debug] gameOver variable:', gameOver);
+  }, [gameOver]);
+
+  // Defensive check: show loading if gamePhase or currentPlayer is not ready
+  if ((!gamePhase || !currentPlayer) && gamePhase !== 'game_over') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
+        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+        <div className="text-lg">Waiting for game to start...</div>
+        <div className="text-sm text-gray-400 mt-2">If this takes too long, try refreshing or rejoining the lobby.</div>
+      </div>
+    );
+  }
 
   // --- Loading and Error States ---
   const isLoadingLobby = lobbyData === undefined && !!lobbyId; // Only loading if lobbyId exists but data hasn't arrived
   // Loading hand if we expect cards but haven't received data yet
   const isLoadingHand = userCardIds.length > 0 && userHandCardsData === undefined;
 
-  // Explicitly type the imported component
-  const HandComponent: React.FC<MultiplayerCardHandProps> = MultiplayerCardHand;
+  // No need to explicitly type the imported component as it's already imported
+
+  // Function to handle stat selection directly from card
+  const handleCardStatSelection = (statKey: string) => {
+    if (gamePhase === 'stat_selection' && isMyTurn) {
+      handleStatSelection(statKey);
+    }
+  };
 
   // --- Action Handlers ---
   const handleStatSelection = async (stat: string) => {
@@ -259,12 +302,18 @@ export default function MultiplayerGameBoard() {
     setError(null);
     try {
       console.log(`[UI] Selecting Stat: ${stat}`);
-      await makeMove({
+      
+      // Show what we're sending to the server
+      const moveData = {
         lobbyId,
         playerName,
         action: "select_stat",
         selectedStat: stat,
-      });
+      };
+      console.log('Making move with data:', moveData);
+      
+      await makeMove(moveData);
+      console.log(`Stat selection complete: ${stat}`);
       // State updates are handled by useQuery re-fetching lobbyData
     } catch (err: any) {
       console.error("Failed to select stat:", err);
@@ -274,20 +323,29 @@ export default function MultiplayerGameBoard() {
 
   const handleCardSelection = async (cardId: Id<"iplstats">) => {
     // Extra validation
-     if (!isMyTurn || gamePhase !== 'card_selection' || !lobbyId || !playerName || !selectedStat) {
-        console.warn("Card selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName, selectedStat });
+     if (!isMyTurn || gamePhase !== 'card_selection' || !lobbyId || !playerName) {
+        console.warn("Card selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName });
         return;
      }
+     
+     // In card selection phase, we don't need selectedStat to be set
+     console.log("Card selection validation passed", { cardId, gamePhase, selectedStat });
     setError(null);
     try {
       console.log(`[UI] Playing Card: ${cardId} with Booster: ${activeBooster}`);
-      await makeMove({
+      
+      // Show what we're sending to the server
+      const moveData = {
         lobbyId,
         playerName,
         action: "play_card",
         selectedCardId: cardId,
         useBooster: activeBooster ?? undefined, // Convert null to undefined
-      });
+      };
+      console.log('Making move with data:', moveData);
+      
+      await makeMove(moveData);
+      console.log(`Card play complete: ${cardId}`);
       setActiveBooster(null); // Reset local booster selection after playing card
     } catch (err: any) {
       console.error("Failed to play card:", err);
@@ -309,9 +367,10 @@ export default function MultiplayerGameBoard() {
   };
 
 
-  // --- Game Over Logic ---\
+  // --- Game Over Logic ---
   // Memoize winner calculation
   const finalWinner = useMemo(() => {
+      console.log('[Debug] Calculating finalWinner. gameOver:', gameOver);
       if (!gameOver || !lobbyData?.playerScores) return null;
       let winnerName: string | null = null;
       let maxScore = -Infinity;
@@ -327,10 +386,12 @@ export default function MultiplayerGameBoard() {
               tie = true;
           }
       }
-      return tie ? "Draw" : winnerName; // Return "Draw" or the winner's name
-  }, [gameOver, lobbyData?.playerScores]);
-
-
+      const result = tie ? "Draw" : winnerName; // Return "Draw" or the winner's name
+      console.log('[Debug] Final winner calculated:', result);
+      return result;
+  }, [gameOver, lobbyData?.playerScores]); // Depend on gameOver and the derived playerScores
+ 
+ 
   // --- UI Rendering ---\
 
   // Handle case where user lands here without proper setup
@@ -370,46 +431,101 @@ export default function MultiplayerGameBoard() {
     );
   }
 
-  // Available stats for selection (assuming fixed list)
-   const availableStats = [
-    "Runs_Scored", "Batting_Average", "Batting_Strike_Rate", "Centuries", "Half_Centuries", "Sixes", "Fours",
-    "Wickets_Taken", "Economy_Rate", "Bowling_Average", "Bowling_Strike_Rate", "Four_Wicket_Hauls", "Five_Wicket_Hauls"
-  ];
+  // Define the key stats that can be selected during the game
+
+  // Start timer when player changes or game phase changes to stat/card selection
+  useEffect(() => {
+    // Don't start timer if we're not in an active selection phase
+    if ((gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn) {
+      // Reset timer
+      setTimeLeft(15);
+      
+      // Clear any existing timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // Start new timer
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            // Time's up - auto select if needed
+            clearInterval(timerRef.current!);
+            timerRef.current = null;
+            // Auto-selection logic would go here
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      // If not in selection phase or not my turn, pause the timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    
+    // Clean up on unmount
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [gamePhase, currentPlayer, isMyTurn]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 text-white flex flex-col p-4 overflow-hidden">
-      {/* Background Canvas - Optional */}
-      <div className="absolute inset-0 z-0 opacity-30 pointer-events-none">
-        <Canvas>
-          <Suspense fallback={null}>
-            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-          </Suspense>
-        </Canvas>
-      </div>
-
-      {/* Game Board Content */}
-      <div className="relative z-10 flex flex-col flex-grow">
-
-          {/* Top Bar: Player Scores & Status */}
-          <div className="flex justify-between items-center mb-4 bg-black/30 backdrop-blur-sm p-3 rounded-lg shadow-lg">
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {players.map(p => (
-                      <div key={p} className={`border-b-2 ${currentPlayer === p ? 'border-yellow-400' : 'border-transparent'} px-2 py-1 transition-colors duration-300`}>
-                          <span className={`font-semibold text-sm ${currentPlayer === p ? 'text-yellow-300' : 'text-gray-300'}`}>
-                              {p}{p === playerName ? ' (You)' : ''}
-                          </span>: <span className="text-white font-bold text-sm">{playerScores[p] ?? 0}</span>
-                      </div>
-                  ))}
-              </div>
-              <div className="flex items-center space-x-3 flex-shrink-0">
-                 <span className="text-sm text-gray-400 italic hidden sm:inline">
-                     {gameStatus === 'completed' ? 'Game Over' : `Phase: ${formatStatLabel(gamePhase ?? 'Unknown')}`}
-                 </span>
-                 <button onClick={handleLeaveGame} className="text-red-500 hover:text-red-400 transition-colors" title="Leave Game">
-                      <LogOut size={20} />
-                  </button>
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
+      {/* Top Bar: Player Scores & Status - Styled like single player */}
+      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-3 shadow-md flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+              <button 
+                  onClick={handleLeaveGame} 
+                  className="flex items-center space-x-1 bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-sm font-medium transition-colors"
+              >
+                  <LogOut size={16} /> <span>Exit</span>
+              </button>
+              <div className="text-sm font-medium ml-2">
+                  Playing as: <span className="text-yellow-300 font-bold">{playerName}</span>
+                  <div className="text-xs text-gray-300">Session: {sessionId.substring(0, 7)}...</div>
               </div>
           </div>
+
+          {/* Timer in center */}
+          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn && (
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center 
+                                border-2 ${timeLeft <= 5 ? 'border-red-500' : 'border-blue-400'}`}>
+                  <span className={`text-xl font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-white'}`}>
+                    {timeLeft}
+                  </span>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          <div className="flex items-center space-x-3">
+              <div className="flex items-center">
+                  <span className="text-sm mr-2">Current Player:</span>
+                  <span className={`font-bold ${currentPlayer === playerName ? "text-yellow-300" : "text-white"}`}>
+                      {currentPlayer || 'Waiting...'}
+                  </span>
+                  {currentPlayer === playerName && (
+                    <span className="ml-1 text-green-400 text-xs">(Your Turn)</span>
+                  )}
+              </div>
+              <div className="bg-blue-700 text-white text-lg font-bold w-8 h-8 rounded-full flex items-center justify-center">
+                  {players.length}
+              </div>
+          </div>
+      </div>
+      
+      {/* Game Board Content - Full Screen */}
+      <div className="relative flex-grow">
 
            {/* Error Display */}
            {error && (
@@ -422,100 +538,41 @@ export default function MultiplayerGameBoard() {
               </motion.div>
            )}
 
-          {/* Main Game Area */}
-          <div className="flex-grow grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-
-              {/* Left Panel: Opponent Hands (Simplified) */}
-              <div className="md:col-span-1 space-y-3">
-                 <h2 className="text-lg font-semibold mb-2 text-gray-400">Opponents</h2>
-                 {players.filter(p => p !== playerName).map(opponentName => {
-                     // Get hand size from lobbyData.playerHands
-                     const handSize = (lobbyData.playerHands as PlayerHandsMap)?.[opponentName]?.length ?? 0;
-                     return (
-                        <div key={opponentName} className="bg-black/20 p-3 rounded-lg backdrop-blur-sm shadow">
-                            <p className="text-white mb-1 font-medium text-sm truncate">{opponentName}</p>
-                            <div className="flex flex-wrap gap-1">
-                                {Array.from({ length: handSize }).map((_, i) => (
-                                    <div key={i} className="w-6 h-10 bg-gradient-to-br from-indigo-600 to-purple-700 rounded border border-indigo-400 shadow-sm"></div>
-                                ))}
-                                {handSize === 0 && <p className="text-xs text-gray-500 italic w-full">No cards</p>}
-                            </div>
-                         </div>
-                     );
-                 })}
+          {/* Main Game Area - All UI elements as overlays */}
+          
+          {/* Display Current Stat Overlay */}
+          {gamePhase === 'card_selection' && selectedStat && (
+              <div className="absolute top-20 right-8 z-30 bg-blue-900/70 backdrop-blur-sm rounded-lg p-3 shadow-lg">
+                  <h3 className="text-lg font-bold text-yellow-300 mb-1">Playing Stat</h3>
+                  <div className="text-white font-medium">{formatStatLabel(selectedStat)}</div>
               </div>
-
-              {/* Center Panel: Played Cards / Stat Selection / Game Over */}
-              <div className="md:col-span-1 flex flex-col items-center">
-                  {/* Display Played Cards */}
-                  {gamePhase === 'card_selection' && selectedStat && (
-                      <motion.div
-                         initial={{ opacity: 0 }}
-                         animate={{ opacity: 1 }}
-                         className="w-full mb-4"
-                      >
-                         <h2 className="text-xl font-bold text-center mb-3 text-yellow-400">Playing Stat: {formatStatLabel(selectedStat)}</h2>
-                         <div className="grid grid-cols-2 gap-3">
-                             {currentHandPlayedCards.map(played => (
-                                <PlayedCardDisplay
-                                    key={played.playerId} // Use playerId as key assumes one card per player per hand
-                                    playedCard={played}
-                                    selectedStat={selectedStat}
-                                    isLeading={leadingCardInfo?.playerId === played.playerId}
-                                />
-                             ))}
-                         </div>
-                      </motion.div>
-                  )}
-
-                  {/* Display Stat Selection Buttons */}
-                  {isMyTurn && gamePhase === 'stat_selection' && (
-                      <motion.div
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="w-full bg-black/30 backdrop-blur-sm p-4 rounded-lg shadow-lg"
-                      >
-                          <h2 className="text-xl font-bold text-center mb-4 text-yellow-400">Select Stat to Play</h2>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {availableStats.map(stat => (
-                                  <motion.button
-                                      key={stat}
-                                      whileHover={{ scale: 1.05 }}
-                                      whileTap={{ scale: 0.95 }}
-                                      onClick={() => handleStatSelection(stat)}
-                                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-white text-xs sm:text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                                  >
-                                      {formatStatLabel(stat)}
-                                  </motion.button>
-                              ))}
-                          </div>
-                      </motion.div>
-                  )}
+          )}
 
                  {/* Game Over Screen */}
                  {gameOver && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="w-full bg-gradient-to-br from-green-800 to-emerald-900 backdrop-blur-sm p-6 rounded-lg text-center shadow-2xl border border-green-500"
+                        className="absolute inset-0 flex items-center justify-center z-50"
                     >
-                        <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4 animate-pulse" />
-                        <h2 className="text-3xl font-bold mb-2 text-white">Game Over!</h2>
-                        {finalWinner === "Draw" ? (
-                           <p className="text-xl mb-4 text-gray-300">It's a draw!</p>
-                        ) : finalWinner ? (
-                            <p className="text-xl mb-4 text-yellow-300">Winner: <span className="font-bold">{finalWinner}</span></p>
-                        ) : (
-                             <p className="text-xl mb-4 text-gray-400">Calculating winner...</p> // Should not happen if gamePhase is game_over
-                        )}
-                         <h3 className="text-lg font-semibold mb-2 text-white">Final Scores:</h3>
-                          <ul className="space-y-1 mb-6">
-                              {players.map(p => (
-                                  <li key={p} className="flex justify-center gap-2 text-gray-200">
-                                      <span>{p}:</span>
-                                      <span className="font-bold">{playerScores[p] ?? 0}</span>
-                                  </li>
-                              ))}\
+                        <div className="bg-gradient-to-br from-green-800 to-emerald-900 backdrop-blur-sm p-8 rounded-lg text-center shadow-2xl border border-green-500 max-w-md">
+                             <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4 animate-pulse" />
+                             <h2 className="text-3xl font-bold mb-2 text-white">Game Over!</h2>
+                             {finalWinner === "Draw" ? (
+                                <p className="text-xl mb-4 text-gray-300">It's a draw!</p>
+                             ) : finalWinner ? (
+                                 <p className="text-xl mb-4 text-yellow-300">Winner: <span className="font-bold">{finalWinner}</span></p>
+                             ) : (
+                                  <p className="text-xl mb-4 text-gray-400">Calculating winner...</p>
+                             )}
+                              <h3 className="text-lg font-semibold mb-2 text-white">Final Scores:</h3>
+                               <ul className="space-y-1 mb-6">
+                                   {players.map(p => (
+                                       <li key={p} className="flex justify-center gap-2 text-gray-200">
+                                           <span>{p}:</span>
+                                           <span className="font-bold">{playerScores[p] ?? 0}</span>
+                                       </li>
+                                   ))}
                           </ul>
                         <button
                             onClick={handleLeaveGame}
@@ -523,60 +580,113 @@ export default function MultiplayerGameBoard() {
                         >
                             Return to Lobby
                         </button>
+                        </div>
                     </motion.div>
                   )}
 
-                 {/* Waiting Indicator */}\
-                 {!isMyTurn && !gameOver && gameStatus === 'in_progress' && (
-                     <div className="mt-8 text-center">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-gray-400" />
-                        <p className="text-gray-400 italic">Waiting for {currentPlayer}...</p>
-                     </div>
-                 )}
-
-              </div>
-
-              {/* Right Panel: Boosters */}
-               <div className="md:col-span-1 flex flex-col items-center space-y-4">
-                  <h2 className="text-lg font-semibold text-gray-400 mb-2">Boosters</h2>
-                  <BoosterButton
-                      type="orange"
-                      isActive={activeBooster === 'orange'}
-                      // Can only USE booster if it's your turn, card_selection phase, and you have it available
-                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.orange}
-                      onClick={() => handleBoosterToggle('orange')}
-                  />
-                   <BoosterButton
-                      type="purple"
-                      isActive={activeBooster === 'purple'}
-                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.purple}
-                      onClick={() => handleBoosterToggle('purple')}
-                  />
-                   <BoosterButton
-                      type="teamrank"
-                      isActive={activeBooster === 'teamrank'}
-                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.teamrank}
-                      onClick={() => handleBoosterToggle('teamrank')}
-                  />
-              </div>
-          </div>
-
-          {/* Bottom Area: Player Hand */}
-          <div className="mt-4 pt-4 border-t border-gray-700/50 flex flex-col items-center">
-             <h2 className="text-lg font-semibold mb-3 text-gray-300">Your Hand</h2>
+          {/* Full Screen Game Area */}
+          <div className="flex-grow relative">
+              {/* Waiting Indicator - As overlay */}
+              {!isMyTurn && !gameOver && gamePhase && gamePhase !== 'waiting' && (
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/50 backdrop-blur-sm p-6 rounded-xl z-30 text-center">
+                     <Loader2 className="w-10 h-10 animate-spin mx-auto mb-3 text-blue-400" />
+                     <p className="text-xl text-white font-medium">Waiting for {currentPlayer}'s move...</p>
+                  </div>
+              )}
               {isLoadingHand ? (
-                   <div className="flex items-center justify-center text-gray-400 h-32"> {/* Give hand area some height */}
-                       <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading Hand...
-                   </div>
-               ) : userHandCardsData && userHandCardsData.length > 0 ? (
-                  // Use the explicitly typed HandComponent
-                  <HandComponent
-                      cards={userHandCardsData as PlayerCardData[]}
-                      onCardSelect={handleCardSelection}
-                      isSelectable={isMyTurn && gamePhase === 'card_selection'}
-                  />
+                  <div className="h-full flex items-center justify-center text-gray-400">
+                      <Loader2 className="w-8 h-8 animate-spin mr-3" /> 
+                      <span className="text-lg">Loading Game...</span>
+                  </div>
+              ) : userHandCardsData && userHandCardsData.length > 0 ? (
+                  <div className="w-full h-[calc(100vh-64px)] relative"> {/* Fixed height calculation */}
+                      {/* Game Phase Indicator - Appears as overlay */}
+                      {gamePhase === 'stat_selection' && isMyTurn && (
+                          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
+                              <h2 className="text-xl font-bold text-white mb-2">Select Stat to Play</h2>
+                              <p className="text-sm text-blue-200">Click on a stat from your card to compete with</p>
+                          </div>
+                      )}
+                      
+                      <Canvas camera={{ position: [0, 5, 10], fov: 50 }}>
+                          <ambientLight intensity={0.7} /> {/* Increased intensity */}
+                          <pointLight position={[10, 10, 10]} intensity={1.0} />
+                          <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+                          <Suspense fallback={null}>
+                              <MultiplayerCardHand
+                                  cards={userHandCardsData as PlayerCardData[]}
+                                  onCardSelect={handleCardSelection}
+                                  onStatSelect={handleCardStatSelection}
+                                  isSelectable={isMyTurn && (gamePhase === 'card_selection' || gamePhase === 'stat_selection')}
+                                  gamePhase={gamePhase || ''}
+                                  currentPlayer={playerName || ''} 
+                                  selectedStat={selectedStat || ''}
+                                  players={players}
+                                  playedCards={currentHandPlayedCards.map(played => ({
+                                      playerId: played.playerId,
+                                      card: played.card,
+                                      isLeading: leadingCardInfo?.playerId === played.playerId
+                                  }))}
+                              />
+                          </Suspense>
+                      </Canvas>
+                      
+                      {/* Floating Booster Buttons */}
+                      <div className="absolute bottom-8 left-8 flex flex-col gap-4 z-20">
+                          <BoosterButton
+                              type="orange"
+                              isActive={activeBooster === 'orange'}
+                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.orange}
+                              onClick={() => handleBoosterToggle('orange')}
+                          />
+                          <BoosterButton
+                              type="purple"
+                              isActive={activeBooster === 'purple'}
+                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.purple}
+                              onClick={() => handleBoosterToggle('purple')}
+                          />
+                          <BoosterButton
+                              type="teamrank"
+                              isActive={activeBooster === 'teamrank'}
+                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.teamrank}
+                              onClick={() => handleBoosterToggle('teamrank')}
+                          />
+                      </div>
+                      
+                      {/* Turn Indicator Overlay - Only for card selection phase */}
+                      {isMyTurn && gamePhase === 'card_selection' && (
+                          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
+                              <h2 className="text-xl font-bold text-white mb-2">Select a Card to Play</h2>
+                              <p className="text-sm text-blue-200">Choose a card to compete with {selectedStat}</p>
+                          </div>
+                      )}
+                      
+                      {/* Winner Notification */}
+                      {leadingCardInfo && gamePhase === 'round_end' && (
+                          <motion.div
+                              initial={{ opacity: 0, y: -20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-yellow-600/80 backdrop-blur-sm 
+                                        px-6 py-3 rounded-xl z-30 text-center border-2 border-yellow-400"
+                          >
+                              <h3 className="text-xl font-bold text-white mb-1">
+                                  {leadingCardInfo.playerId || 'Player'} wins the round!
+                              </h3>
+                              <p className="text-yellow-200">
+                                  With a {formatStatLabel(selectedStat || '')} value of {formatStatValue(
+                                      typeof leadingCardInfo.finalValue === 'number' ? leadingCardInfo.finalValue : 0, 
+                                      selectedStat || '')}
+                              </p>
+                          </motion.div>
+                      )}
+                  </div>
               ) : (
-                 <p className="text-gray-500 italic h-32 flex items-center justify-center">{(gamePhase === 'game_over') ? 'Game ended.' : 'No cards in hand.'}</p>
+                  <div className="h-full flex items-center justify-center">
+                      <div className="bg-black/30 backdrop-blur-sm p-8 rounded-lg text-center max-w-md">
+                          <h2 className="text-2xl font-bold text-white mb-4">{gamePhase === 'game_over' ? 'Game Over' : 'Waiting for Cards'}</h2>
+                          <p className="text-gray-300">{gamePhase === 'game_over' ? 'The game has ended.' : 'Waiting for the game to start...'}</p>
+                      </div>
+                  </div>
               )}
           </div>
       </div>

@@ -546,6 +546,9 @@ export default function CardHand() {
     resetSelectionState
   } = useGameStore();
   
+  const { size } = useThree();
+  const scale = Math.min(1, size.width / 1200);
+  
   return (
     <group>
       <PerspectiveCamera 

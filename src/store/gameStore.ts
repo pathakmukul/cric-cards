@@ -531,11 +531,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   
-  setGameData: (orangeCap, purpleCap, teamRankings) => set({
+  setGameData: (orangeCap: string | null, purpleCap: string | null, teamRankings: { [team: string]: number }) => set({
     orangeCapPlayer: orangeCap,
     purpleCapPlayer: purpleCap,
-    teamRankings
+    teamRankings,
   }),
+  
+  // Function to update multiple game state properties at once (useful for multiplayer sync)
+  setGameState: (gameState: Partial<GameState>) => set(gameState),
   
   resetGame: () => set((state) => ({
     currentPlayer: 0,
