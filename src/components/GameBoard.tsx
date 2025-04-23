@@ -69,7 +69,7 @@ const formatStatValue = (value: number, statKey: string): string => {
   return value.toFixed(2);
 };
 
-const PlayedCardDisplay = ({ 
+export const PlayedCardDisplay = ({ 
   playedCard, 
   selectedStat,
   isLeading = false

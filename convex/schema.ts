@@ -104,6 +104,8 @@ export default defineSchema({
     selectedStat: v.optional(v.string()),
     currentHand: v.optional(v.object({
       statSelector: v.string(),
+      // Adding selectedStat field to match existing data
+      selectedStat: v.optional(v.string()),
       playedCards: v.array(v.object({
         playerId: v.string(),
         cardId: v.id("iplstats"),

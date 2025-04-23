@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { Text, PerspectiveCamera } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import CardComponent from './shared/CardComponent';
 
 const CARD_WIDTH = 0.7;
 const CARD_HEIGHT = 1.0;
@@ -44,9 +45,38 @@ function getTeamColor(team) {
     'RR': '#E60693',
     'SRH': '#FF822A',
     'GT': '#1B2133',
-    'LSG': '#32a8a8',
+    'LSG': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#795548';
+}
+
+// Color utility functions
+function lightenColor(color, factor = 0.5) {
+  // Lighten a hex color by factor (0-1)
+  const hex = color.replace('#', '');
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+  
+  r = Math.min(255, r + Math.floor((255 - r) * factor));
+  g = Math.min(255, g + Math.floor((255 - g) * factor));
+  b = Math.min(255, b + Math.floor((255 - b) * factor));
+  
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function darkenColor(color, factor = 0.5) {
+  // Darken a hex color by factor (0-1)
+  const hex = color.replace('#', '');
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+  
+  r = Math.max(0, r - Math.floor(r * factor));
+  g = Math.max(0, g - Math.floor(g * factor));
+  b = Math.max(0, b - Math.floor(b * factor));
+  
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
 // Multiplayer card hand component
@@ -85,16 +115,19 @@ export default function MultiplayerCardHand({
     }
   };
   
-  // Handle stat selection
-  const handleStatClick = (stat) => {
-    if (!isSelectable || gamePhase !== 'stat_selection') {
+  // Handle stat selection - with one-click solution for first card of round
+  const handleStatClick = (stat, cardId) => {
+    if (!isSelectable) {
       console.log('Stat selection blocked:', { isSelectable, gamePhase, stat });
       return;
     }
     
-    console.log('Stat selected:', stat);
-    if (onStatSelect) {
-      onStatSelect(stat);
+    if (gamePhase === 'stat_selection') {
+      console.log('Stat selected with one-click solution:', stat, 'cardId:', cardId);
+      if (onStatSelect) {
+        // Pass both the stat and the card ID for one-click play
+        onStatSelect(stat, cardId);
+      }
     }
   };
   
@@ -217,108 +250,60 @@ export default function MultiplayerCardHand({
               {isCurrentPlayerHand ? (
                 // Current player's cards - with interaction
                 cards.map((card, cardIndex) => {
-          const isHovered = hoveredCard === card._id;
-          const isSelected = selectedCardId === card._id;
-          
-          // Calculate hand width like single player
-          const handWidth = Math.min(cards.length * (CARD_WIDTH + 0.15), 3.0);
-          const xPos = ((cardIndex / Math.max(cards.length - 1, 1)) - 0.5) * handWidth;
-          
-          return (
-            <group 
-              key={card._id}
-              position={[xPos, 0, 0]}
-              onClick={() => isSelectable && handleCardClick(card._id)}
-              onPointerOver={() => setHoveredCard(card._id)}
-              onPointerOut={() => setHoveredCard(null)}
-            >
-              {/* Card base */}
-              <mesh scale={[CARD_WIDTH, CARD_HEIGHT, 0.01]}>
-                <boxGeometry />
-                <meshStandardMaterial color={getTeamColor(card.team)} />
-              </mesh>
-              
-              {/* Player name */}
-              <Text
-                position={[0, 0.4, 0.01]}
-                fontSize={0.08}
-                color="white"
-                anchorX="center"
-                anchorY="middle"
-                fontWeight="bold"
-              >
-                {card.Player_Name}
-              </Text>
-              
-              {/* Team name */}
-              <Text
-                position={[0, 0.3, 0.01]}
-                fontSize={0.06}
-                color="#f0f0f0"
-                anchorX="center"
-                anchorY="middle"
-              >
-                {card.team || 'Unknown'}
-              </Text>
-              
-              {/* Stats - always show during stat selection phase */}
-              {gamePhase === 'stat_selection' && (
-                <group position={[0, 0, 0.02]}>
-                  {['Batting_Average', 'Runs_Scored', 'Wickets_Taken', 'Economy_Rate', 'Batting_Strike_Rate'].map((stat, statIndex) => {
-                    const isStatHovered = hoveredStat === stat;
-                    return (
-                      <group 
-                        key={stat}
-                        position={[0, 0.1 - statIndex * 0.1, 0]}
-                        onPointerOver={() => setHoveredStat(stat)}
-                        onPointerOut={() => setHoveredStat(null)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStatClick(stat);
-                        }}
-                      >
-                        <mesh position={[0, 0, 0]} scale={[0.6, 0.08, 0.01]}>
-                          <boxGeometry />
-                          <meshStandardMaterial color={isStatHovered ? '#1e88e5' : '#0d47a1'} />
-                        </mesh>
-                        <Text
-                          position={[-0.2, 0, 0.01]}
-                          fontSize={0.04}
-                          color="white"
-                          anchorX="left"
-                          anchorY="middle"
-                        >
-                          {stat.replace(/_/g, ' ')}
-                        </Text>
-                        <Text
-                          position={[0.25, 0, 0.01]}
-                          fontSize={0.04}
-                          color="white"
-                          anchorX="right"
-                          anchorY="middle"
-                          fontWeight="bold"
-                        >
-                          {card[stat]?.toString() || '0'}
-                        </Text>
-                      </group>
-                    );
-                  })}
-                </group>
-              )}
-            </group>
-          );
+                  const isHovered = hoveredCard === card._id;
+                  const isSelected = selectedCardId === card._id;
+                  
+                  // Calculate hand width like single player
+                  const handWidth = Math.min(cards.length * (CARD_WIDTH + 0.15), 3.0);
+                  const xPos = ((cardIndex / Math.max(cards.length - 1, 1)) - 0.5) * handWidth;
+                  
+                  // Prepare stat options for the card
+                  const statOptions = [
+                    { key: 'Batting_Average', label: 'Batting Avg', higher: true },
+                    { key: 'Runs_Scored', label: 'Runs', higher: true },
+                    { key: 'Wickets_Taken', label: 'Wickets', higher: true },
+                    { key: 'Economy_Rate', label: 'Economy', higher: false },
+                    { key: 'Batting_Strike_Rate', label: 'Strike Rate', higher: true }
+                  ];
+
+                  return (
+                    <CardComponent
+                      key={card._id}
+                      card={card}
+                      isSelected={isSelected}
+                      isHovered={isHovered}
+                      position={[xPos, 0, 0]}
+                      onClick={() => isSelectable && handleCardClick(card._id)}
+                      onHover={(hovered) => hovered ? setHoveredCard(card._id) : setHoveredCard(null)}
+                      gamePhase={gamePhase}
+                      selectedStat={selectedStat}
+                      statOptions={statOptions}
+                      onStatSelect={(stat) => handleStatClick(stat, card._id)}
+                      isSelectable={isSelectable}
+                      isActivePlayer={isSelectable}
+                    />
+                  );
                 })
               ) : (
-                // Opponent cards - face down
+                // Opponent cards - face down using shared component
                 [...Array(3)].map((_, cardIndex) => {
                   const x = ((cardIndex / 2) - 0.5) * 1.5;
+                  
+                  // Create a minimal card object for face-down opponent cards
+                  const dummyCard = {
+                    _id: `opponent-${playerName}-${cardIndex}`,
+                    Player_Name: 'Unknown Card',
+                    team: 'Unknown'
+                  };
+                  
                   return (
-                    <group key={`opponent-${playerName}-${cardIndex}`} position={[x, 0, 0]}>
-                      <mesh scale={[CARD_WIDTH, CARD_HEIGHT, 0.01]} rotation={[Math.PI/6, Math.PI, 0] as [number, number, number]}>
-                        <boxGeometry />
-                        <meshStandardMaterial color="#1e3a8a" />
-                      </mesh>
-                    </group>
+                    <CardComponent
+                      key={`opponent-${playerName}-${cardIndex}`}
+                      card={dummyCard}
+                      position={[x, 0, 0]}
+                      rotation={[Math.PI/6, Math.PI, 0] as [number, number, number]}
+                      isFaceDown={true}
+                    />
                   );
                 })
               )}
@@ -355,54 +340,34 @@ export default function MultiplayerCardHand({
                   {playedCard.playerId}
                 </Text>
                 
-                {/* The played card */}
-                <group position={[x, 0.1, z]}>
-                  <mesh scale={[CARD_WIDTH, CARD_HEIGHT, 0.01]} rotation={[0, Math.PI, 0] as [number, number, number]}>
-                    <boxGeometry />
-                    <meshStandardMaterial color={getTeamColor(playedCard.card?.team)} />
-                  </mesh>
-                  
-                  {/* Card content */}
-                  <Text
-                    position={[0, 0.4, 0.01]}
-                    fontSize={0.08}
-                    color="white"
-                    anchorX="center"
-                    anchorY="middle"
-                    fontWeight="bold"
-                  >
-                    {playedCard.card?.Player_Name || 'Unknown'}
-                  </Text>
-                  
-                  {/* Selected stat highlight */}
-                  {selectedStat && (
-                    <group position={[0, 0, 0.02]}>
-                      <mesh position={[0, 0, 0]} scale={[0.6, 0.08, 0.01]}>
-                        <boxGeometry />
-                        <meshStandardMaterial color={isLeading ? '#4ade80' : '#1e88e5'} />
-                      </mesh>
-                      <Text
-                        position={[-0.2, 0, 0.01]}
-                        fontSize={0.04}
-                        color="white"
-                        anchorX="left"
-                        anchorY="middle"
-                      >
-                        {selectedStat.replace(/_/g, ' ')}
-                      </Text>
-                      <Text
-                        position={[0.25, 0, 0.01]}
-                        fontSize={0.04}
-                        color="white"
-                        anchorX="right"
-                        anchorY="middle"
-                        fontWeight="bold"
-                      >
-                        {(playedCard.card && selectedStat && playedCard.card[selectedStat] !== undefined) ? playedCard.card[selectedStat].toString() : '0'}
-                      </Text>
-                    </group>
-                  )}
-                </group>
+                {/* Selected stat highlight */}
+                {selectedStat && (
+                  <group position={[0, 0, 0.02]}>
+                    <mesh position={[0, 0, 0]} scale={[0.6, 0.08, 0.01]}>
+                      <boxGeometry />
+                      <meshStandardMaterial color={isLeading ? '#4ade80' : '#1e88e5'} />
+                    </mesh>
+                    <Text
+                      position={[-0.2, 0, 0.01]}
+                      fontSize={0.04}
+                      color="white"
+                      anchorX="left"
+                      anchorY="middle"
+                    >
+                      {selectedStat.replace(/_/g, ' ')}
+                    </Text>
+                    <Text
+                      position={[0.25, 0, 0.01]}
+                      fontSize={0.04}
+                      color="white"
+                      anchorX="right"
+                      anchorY="middle"
+                      fontWeight="bold"
+                    >
+                      {(playedCard.card && selectedStat && playedCard.card[selectedStat] !== undefined) ? playedCard.card[selectedStat].toString() : '0'}
+                    </Text>
+                  </group>
+                )}
               </group>
             );
           })}

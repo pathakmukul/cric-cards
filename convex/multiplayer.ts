@@ -358,7 +358,11 @@ export const makeMove = mutation({
   args: {
     lobbyId: v.string(),
     playerName: v.string(),
-    action: v.union(v.literal("select_stat"), v.literal("play_card")),
+    action: v.union(
+      v.literal("select_stat"), 
+      v.literal("play_card"),
+      v.literal("select_and_play")
+    ),
     selectedStat: v.optional(v.string()),
     selectedCardId: v.optional(v.id("iplstats")),
     useBooster: v.optional(v.union(
@@ -378,7 +382,16 @@ export const makeMove = mutation({
     if (!lobby.gameStarted || lobby.status !== "in_progress") throw new Error("[makeMove] Game not active");
     // Ensure currentPlayer is defined before comparing
     if (!lobby.currentPlayer) throw new Error("[makeMove] Game state error: currentPlayer is not set.");
-    if (lobby.currentPlayer !== args.playerName) throw new Error(`[makeMove] Not ${args.playerName}'s turn (Current: ${lobby.currentPlayer})`);
+    
+    // Special handling for the select_and_play and play_card actions
+    // - select_and_play: validation happens inside the handler
+    // - play_card: we'll use a more permissive approach to avoid race conditions
+    if (args.action !== "select_and_play" && args.action !== "play_card") {
+      // Standard turn validation for other actions
+      if (lobby.currentPlayer !== args.playerName) {
+        throw new Error(`[makeMove] Not ${args.playerName}'s turn (Current: ${lobby.currentPlayer})`);
+      }
+    }
 
     // --- Prepare State (with type safety) ---
     const playerHands = lobby.playerHands as PlayerHandsMap ?? {};
@@ -462,15 +475,26 @@ export const makeMove = mutation({
       if (!lobby.selectedStat) throw new Error("[makeMove] No stat has been selected for this hand");
       if (!args.selectedCardId) throw new Error("[makeMove] No card selected");
 
-      const currentSelectedStat = lobby.selectedStat; // Known to be string now
-
-      const hand = playerHands[currentPlayer];
-      if (!hand || !hand.includes(args.selectedCardId)) throw new Error(`[makeMove] Player ${currentPlayer} does not have card ${args.selectedCardId}`);
+      // Add explicit type assertion since we've already checked it's not null/undefined
+      const currentSelectedStat = lobby.selectedStat as string;
+      
+      // Custom validation for play_card - allows a player to play if they have a valid card
+      // This is more flexible than requiring it to be exactly their turn
+      // If the player isn't the current player, at least validate they're a participant
+      if (lobby.currentPlayer !== args.playerName && !lobby.players.includes(args.playerName)) {
+        throw new Error(`[makeMove] Player ${args.playerName} is not part of this game`);
+      }
+      
+      // Check that the player has the specified card (using the player's name, not currentPlayer)
+      const playCardHandCheck = playerHands[args.playerName] || [];
+      if (!playCardHandCheck.includes(args.selectedCardId)) {
+        throw new Error(`[makeMove] Player ${args.playerName} does not have card ${args.selectedCardId}`);
+      }
 
       const boosterToUse = args.useBooster ?? undefined;
       if (boosterToUse) {
-          if (!playerBoosters[currentPlayer]) throw new Error(`[makeMove] Player ${currentPlayer} has no booster state.`);
-          if (!playerBoosters[currentPlayer][boosterToUse]) throw new Error(`[makeMove] Booster ${boosterToUse} not available or already used by ${currentPlayer}`);
+          if (!playerBoosters[args.playerName]) throw new Error(`[makeMove] Player ${args.playerName} has no booster state.`);
+          if (!playerBoosters[args.playerName][boosterToUse]) throw new Error(`[makeMove] Booster ${boosterToUse} not available or already used by ${args.playerName}`);
       }
 
       // Fetch card and calculate value
@@ -482,7 +506,7 @@ export const makeMove = mutation({
       );
 
       const playedCardInfo: PlayedCard = {
-        playerId: currentPlayer,
+        playerId: args.playerName,
         cardId: args.selectedCardId,
         cardName: cardData.Player_Name ?? "Unknown Card",
         boosterUsed: boosterToUse,
@@ -491,13 +515,14 @@ export const makeMove = mutation({
       };
 
       // Update player's hand (remove played card)
-      const updatedHand = hand.filter(cardId => cardId !== args.selectedCardId);
-      playerHands[currentPlayer] = updatedHand;
+      const playCardCurrentHand = playerHands[args.playerName] || [];
+      const updatedHand = playCardCurrentHand.filter((cardId: Id<"iplstats">) => cardId !== args.selectedCardId);
+      playerHands[args.playerName] = updatedHand;
       stateUpdates.playerHands = playerHands; // Mark for update
 
       // Update booster state if used
       if (boosterToUse) {
-        playerBoosters[currentPlayer][boosterToUse] = false;
+        playerBoosters[args.playerName][boosterToUse] = false;
         stateUpdates.playerBoosters = playerBoosters; // Mark for update
       }
 
@@ -506,10 +531,10 @@ export const makeMove = mutation({
       if (!currentHandState) {
         // First card played in this hand
           updatedCurrentHand = {
-              statSelector: currentPlayer, // The player who plays the first card after stat selection initiated the comparison
+              statSelector: args.playerName, // The player who plays the first card after stat selection initiated the comparison
               playedCards: [playedCardInfo],
               leadingCard: { // The first card is automatically the leader
-                  playerId: currentPlayer,
+                  playerId: args.playerName,
                   cardId: args.selectedCardId,
                   cardName: playedCardInfo.cardName,
                   finalValue: finalValue
@@ -532,7 +557,7 @@ export const makeMove = mutation({
               if (!lowerIsBetter && finalValue > currentLeading.finalValue) isNewLead = true;
           }
           if (isNewLead) {
-              updatedCurrentHand.leadingCard = { playerId: currentPlayer, cardId: args.selectedCardId, cardName: playedCardInfo.cardName, finalValue: finalValue };
+              updatedCurrentHand.leadingCard = { playerId: args.playerName, cardId: args.selectedCardId, cardName: playedCardInfo.cardName, finalValue: finalValue };
           }
       }
       stateUpdates.currentHand = updatedCurrentHand;
@@ -603,6 +628,98 @@ export const makeMove = mutation({
         // Hand continues, next player plays a card
         stateUpdates.gamePhase = "card_selection";
       }
+    }
+    // --- Action: Combined Select Stat and Play Card ---
+    else if (args.action === "select_and_play") {
+      // Validate it's the player's turn (only once for both operations)
+      if (lobby.currentPlayer !== args.playerName) {
+        throw new Error(`[makeMove] Not ${args.playerName}'s turn (Current: ${lobby.currentPlayer})`);
+      }
+      if (currentPhase !== "stat_selection") throw new Error("[makeMove] Not the time to select a stat and play card");
+      if (!args.selectedStat) throw new Error("[makeMove] No stat selected for combined action");
+      if (!args.selectedCardId) throw new Error("[makeMove] No card selected for combined action");
+      
+      // 1. First, handle the stat selection
+      const newlySelectedStat = args.selectedStat;
+      stateUpdates.selectedStat = newlySelectedStat;
+      stateUpdates.gamePhase = "card_selection";
+      console.log(`[makeMove] Player ${args.playerName} selected stat: ${newlySelectedStat} with combined action`);
+      
+      // 2. Immediately handle the card play (similar to play_card action)
+      const selectAndPlayHand = playerHands[args.playerName] || [];
+      if (!selectAndPlayHand.includes(args.selectedCardId)) {
+        throw new Error(`[makeMove] Player ${args.playerName} does not have card ${args.selectedCardId}`);
+      }
+      
+      // Check booster if provided
+      const boosterToUse = args.useBooster ?? undefined;
+      if (boosterToUse) {
+        if (!playerBoosters[args.playerName]) {
+          throw new Error(`[makeMove] Player ${args.playerName} has no booster state.`);
+        }
+        if (!playerBoosters[args.playerName][boosterToUse]) {
+          throw new Error(`[makeMove] Booster ${boosterToUse} not available or already used by ${args.playerName}`);
+        }
+      }
+      
+      // Fetch card and calculate value using the stat that was JUST selected
+      const cardData = await ctx.db.get(args.selectedCardId);
+      if (!cardData) throw new Error(`[makeMove] Card data not found for ${args.selectedCardId}`);
+      
+      // Ensure newlySelectedStat is treated as a string for the calculateStatValue function
+      if (!newlySelectedStat) throw new Error("[makeMove] Selected stat is undefined or empty");
+      const { rawValue, finalValue } = await calculateStatValue(
+        ctx, args.selectedCardId, newlySelectedStat as string, boosterToUse, lobby
+      );
+      
+      const playedCardInfo: PlayedCard = {
+        playerId: args.playerName,
+        cardId: args.selectedCardId,
+        cardName: cardData.Player_Name ?? "Unknown Card",
+        boosterUsed: boosterToUse,
+        rawValue: rawValue,
+        finalValue: finalValue,
+      };
+      
+      // Update player's hand (remove played card)
+      const playCardCurrentHand = playerHands[args.playerName] || [];
+      const selectAndPlayUpdatedHand = playCardCurrentHand.filter((cardId: Id<"iplstats">) => cardId !== args.selectedCardId);
+      playerHands[args.playerName] = selectAndPlayUpdatedHand;
+      stateUpdates.playerHands = playerHands; // Mark for update
+      
+      // Update booster state if used
+      if (boosterToUse) {
+        playerBoosters[args.playerName][boosterToUse] = false;
+        stateUpdates.playerBoosters = playerBoosters; // Mark for update
+      }
+      
+      // Update currentHand in lobby state according to schema
+      // Note: selectedStat is stored at the top level of the document (already set above)
+      // while statSelector is stored within the currentHand object
+      let updatedCurrentHand: CurrentHandState = {
+        statSelector: currentPlayer, // The player who played the first card selected the stat
+        playedCards: [playedCardInfo],
+        leadingCard: { // The first card is automatically the leader
+          playerId: currentPlayer,
+          cardId: args.selectedCardId,
+          cardName: playedCardInfo.cardName,
+          finalValue: finalValue
+        }
+      };
+      
+      stateUpdates.currentHand = updatedCurrentHand;
+      
+      // --- Advance Turn ---
+      const currentPlayerIndex = lobby.players.indexOf(currentPlayer);
+      const nextPlayerIndex = (currentPlayerIndex + 1) % lobby.players.length;
+      stateUpdates.currentPlayer = lobby.players[nextPlayerIndex];
+      
+      console.log(`[makeMove] Player ${currentPlayer} combined select stat ${newlySelectedStat} and play card ${args.selectedCardId}. Next turn: ${stateUpdates.currentPlayer}`);
+      
+      // Continue with card_selection phase for next player
+      stateUpdates.gamePhase = "card_selection";
+      
+      // NOTE: Since this is always the first card of a hand, we don't need to check for hand end yet
     }
     // --- Invalid Action ---
     else {

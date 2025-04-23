@@ -727,7 +727,7 @@ function getTeamColor(team?: string): string {
     'RR': '#E60693',
     'SRH': '#FF822A',
     'GT': '#1B2133',
-    'LSG': '#32a8a8',
+    'LSG': '#A7D5F6',
   };
   
   return team && teamColors[team] ? teamColors[team] : '#795548';

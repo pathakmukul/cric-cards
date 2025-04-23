@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState, useRef, useMemo } from 'react';
+import React, { Suspense, useEffect, useState, useRef, useMemo, memo } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
 import { useQuery, useMutation } from 'convex/react'; // Import Convex hooks
@@ -7,10 +7,11 @@ import { Id, Doc } from '../../convex/_generated/dataModel'; // Import Convex ty
 import MultiplayerCardHand from './MultiplayerCardHand';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Loader2, AlertTriangle, LogOut, Trophy } from 'lucide-react'; // Added icons
+import { Loader2, AlertTriangle, LogOut, Trophy, Clock } from 'lucide-react'; // Added icons
 
-// Import BoosterButton from GameBoard
-import { BoosterButton } from './GameBoard';
+// Import components from GameBoard and decorations
+import { BoosterButton, PlayedCardDisplay } from './GameBoard';
+import { getTeamDecoration } from './decorations/TeamDecorations';
 
 // Type definitions (can be shared or defined here)
 type BoosterType = "orange" | "purple" | "teamrank";
@@ -88,79 +89,7 @@ const formatStatValue = (value: number | undefined, statKey: string): string => 
   return typeof value === 'number' ? value.toFixed(2) : '0';
 };
 
-// --- Components (PlayedCardDisplay, BoosterButton - Keep as they are UI related) ---
-const PlayedCardDisplay = ({
-  playedCard,
-  selectedStat,
-  isLeading = false
-}: {
-  playedCard: { // Matches structure in lobbyData.currentHand.playedCards
-    playerId: string;
-    cardId: Id<"iplstats">;
-    cardName: string; // Use cardName directly
-    boosterUsed?: BoosterType | null;
-    rawValue: number;
-    finalValue: number;
-  };
-  selectedStat: string; // Should always be defined when this component is rendered
-  isLeading?: boolean;
-}) => {
-  const getBoosterIcon = (booster?: BoosterType | null) => {
-    switch (booster) {
-      case 'orange': return { icon: '🏏', color: '#f97316' };
-      case 'purple': return { icon: '🎯', color: '#a855f7' };
-      case 'teamrank': return { icon: '👑', color: '#0ea5e9' };
-      default: return null;
-    }
-  };
-
-  const booster = getBoosterIcon(playedCard.boosterUsed);
-  // Card team data isn't directly here, use defaults or simplify
-  const teamColor = '#1e40af'; // Default color
-  const formattedStatLabel = formatStatLabel(selectedStat);
-  const formattedStatValue = formatStatValue(playedCard.finalValue, selectedStat);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-xl p-0.5 ${isLeading ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' : 'bg-gray-700'}`}
-    >
-      <div
-        className={`backdrop-blur-lg rounded-lg p-3`}
-        style={{ background: `rgba(17, 24, 39, 0.8)` }} // Use a consistent dark background
-      >
-        {/* Player Info */}
-        <div className="flex items-center justify-between mb-2">
-          <div className={`text-sm font-bold ${isLeading ? 'text-yellow-300' : 'text-white'} truncate`}>{playedCard.playerId}</div>
-          {booster && (
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0"
-              style={{ backgroundColor: booster.color }}
-              title={`${playedCard.boosterUsed} booster`}
-            >
-              {booster.icon}
-            </div>
-          )}
-        </div>
-
-        {/* Card Info */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="text-white text-xs font-light truncate">{playedCard.cardName}</div>
-          </div>
-          {/* Stat Value */}
-          <div className="flex items-center justify-between mt-1 bg-black/30 rounded px-2 py-1">
-            <span className="text-gray-400 text-xs">{formattedStatLabel}:</span>
-            <span className={`font-bold text-base ${isLeading ? 'text-yellow-400' : 'text-white'}`}>
-              {formattedStatValue}
-            </span>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-};
+// Previous component definitions now imported from GameBoard
 
 // BoosterButton is now imported from GameBoard.tsx
 
@@ -177,6 +106,42 @@ interface MultiplayerCardHandProps {
   currentPlayer?: string;
   selectedStat?: string;
 }
+
+// Memoized components to prevent unnecessary re-renders
+const GameTable = memo(() => {
+  return (
+    <group>
+      {/* Game table - Always rendered */}
+      <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[4, 4, 1]}>
+        <circleGeometry args={[1, 64]} />
+        <meshStandardMaterial color="#0a4b76" />
+      </mesh>
+      
+      <mesh position={[0, -0.55, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[4.2, 4.2, 1]}>
+        <ringGeometry args={[0.95, 1, 64]} />
+        <meshStandardMaterial color="#083759" />
+      </mesh>
+      
+      <mesh position={[0, -0.48, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, 1, 1]}>
+        <circleGeometry args={[0.5, 32]} />
+        <meshStandardMaterial color="#0c5d94" />
+      </mesh>
+    </group>
+  );
+});
+
+// Memoized card hand component
+const MemoizedCardHand = memo(MultiplayerCardHand, (prevProps, nextProps) => {
+  // Only re-render when these specific props change
+  return (
+    prevProps.gamePhase === nextProps.gamePhase &&
+    prevProps.isSelectable === nextProps.isSelectable &&
+    prevProps.selectedStat === nextProps.selectedStat &&
+    prevProps.cards.length === nextProps.cards.length &&
+    prevProps.playedCards.length === nextProps.playedCards.length &&
+    JSON.stringify(prevProps.leadingCardInfo) === JSON.stringify(nextProps.leadingCardInfo)
+  );
+});
 
 export default function MultiplayerGameBoard() {
   const navigate = useNavigate();
@@ -226,21 +191,44 @@ export default function MultiplayerGameBoard() {
   // Fetch details for the current player's hand cards
   const userHandCardsData = useQuery(
       api.cards.getCardDetails,
-      userCardIds.length > 0 ? { cardIds: userCardIds } : "skip" // Skip query if no card IDs
+      userCardIds.length > 0 ? { cardIds: userCardIds } : "skip"
   );
 
+  // After fetching hand data, cache the last known cards to prevent unmount flicker
+  const [cachedHand, setCachedHand] = useState<PlayerCardData[]>([]);
+  useEffect(() => {
+    if (userHandCardsData && userHandCardsData.length > 0) {
+      setCachedHand(userHandCardsData as PlayerCardData[]);
+    }
+  }, [userHandCardsData]);
+
   // --- Derived State from Lobby Data ---
-  const gamePhase = lobbyData?.gamePhase;
-  const currentPlayer = lobbyData?.currentPlayer;
-  const players = lobbyData?.players ?? [];
-  const playerScores = (lobbyData?.playerScores as PlayerScoresMap) ?? {};
-  const playerBoosters = (lobbyData?.playerBoosters as PlayerBoostersMap) ?? {};
-  const playerHands = (lobbyData?.playerHands as PlayerHandsMap) ?? {};
+  // Use useMemo to prevent unnecessary recalculations
+  const gameState = useMemo(() => {
+    return {
+      gamePhase: lobbyData?.gamePhase,
+      currentPlayer: lobbyData?.currentPlayer,
+      players: lobbyData?.players ?? [],
+      playerScores: (lobbyData?.playerScores as PlayerScoresMap) ?? {},
+      playerBoosters: (lobbyData?.playerBoosters as PlayerBoostersMap) ?? {},
+      playerHands: (lobbyData?.playerHands as PlayerHandsMap) ?? {},
+      currentHandPlayedCards: lobbyData?.currentHand?.playedCards || [],
+      leadingCardInfo: lobbyData?.currentHand?.leadingCard, // Can be object or undefined
+      selectedStat: lobbyData?.currentHand?.selectedStat
+    };
+  }, [lobbyData]);
+  
+  const gamePhase = gameState.gamePhase;
+  const currentPlayer = gameState.currentPlayer;
+  const players = gameState.players;
+  const playerScores = gameState.playerScores;
+  const playerBoosters = gameState.playerBoosters;
+  const playerHands = gameState.playerHands;
   const userBoosters = playerBoosters[playerName] || { orange: false, purple: false, teamrank: false };
   const isMyTurn = currentPlayer === playerName;
-  const currentHandPlayedCards = lobbyData?.currentHand?.playedCards || [];
+  const currentHandPlayedCards = gameState.currentHandPlayedCards;
   const gameOver = gamePhase === 'game_over';
-  const leadingCardInfo = lobbyData?.currentHand?.leadingCard; // Can be object or undefined
+  const leadingCardInfo = gameState.leadingCardInfo;
 
   // Log gamePhase whenever lobbyData updates
   useEffect(() => {
@@ -267,33 +255,13 @@ export default function MultiplayerGameBoard() {
     console.log('[Debug] gameOver variable:', gameOver);
   }, [gameOver]);
 
-  // Defensive check: show loading if gamePhase or currentPlayer is not ready
-  if ((!gamePhase || !currentPlayer) && gamePhase !== 'game_over') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
-        <Loader2 className="w-12 h-12 animate-spin mb-4" />
-        <div className="text-lg">Waiting for game to start...</div>
-        <div className="text-sm text-gray-400 mt-2">If this takes too long, try refreshing or rejoining the lobby.</div>
-      </div>
-    );
-  }
-
-  // --- Loading and Error States ---
-  const isLoadingLobby = lobbyData === undefined && !!lobbyId; // Only loading if lobbyId exists but data hasn't arrived
-  // Loading hand if we expect cards but haven't received data yet
-  const isLoadingHand = userCardIds.length > 0 && userHandCardsData === undefined;
-
-  // No need to explicitly type the imported component as it's already imported
-
-  // Function to handle stat selection directly from card
-  const handleCardStatSelection = (statKey: string) => {
-    if (gamePhase === 'stat_selection' && isMyTurn) {
-      handleStatSelection(statKey);
-    }
-  };
+  // Initial waiting overlay: show before gamePhase/currentPlayer ready
+  const handToRender = (userHandCardsData && userHandCardsData.length > 0)
+    ? (userHandCardsData as PlayerCardData[])
+    : cachedHand;
 
   // --- Action Handlers ---
-  const handleStatSelection = async (stat: string) => {
+  const handleStatSelection = async (stat: string, cardId?: Id<"iplstats">) => {
     // Extra validation
     if (!isMyTurn || gamePhase !== 'stat_selection' || !lobbyId || !playerName) {
         console.warn("Stat selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName });
@@ -303,25 +271,50 @@ export default function MultiplayerGameBoard() {
     try {
       console.log(`[UI] Selecting Stat: ${stat}`);
       
-      // Show what we're sending to the server
-      const moveData = {
-        lobbyId,
-        playerName,
-        action: "select_stat",
-        selectedStat: stat,
-      };
-      console.log('Making move with data:', moveData);
+      // If this is a one-click solution (stat + card), use the combined action
+      if (cardId) {
+        console.log('One-click solution detected - using combined select_and_play action');
+        
+        // Create a combined action that handles both stat selection and card play atomically
+        const combinedMoveData: any = {
+          lobbyId,
+          playerName,
+          action: "select_and_play" as const,
+          selectedStat: stat,
+          selectedCardId: cardId,
+        };
+        
+        // Only add useBooster if it's a valid value
+        if (activeBooster === "orange" || activeBooster === "purple" || activeBooster === "teamrank") {
+          combinedMoveData.useBooster = activeBooster;
+        }
+        
+        console.log('Making combined select_and_play move:', combinedMoveData);
+        await makeMove(combinedMoveData);
+        console.log(`Combined action complete: Stat=${stat}, Card=${cardId}`);
+        setActiveBooster(null); // Reset booster after playing
+      } 
+      // For regular stat selection without immediately playing a card
+      else {
+        const statMoveData = {
+          lobbyId,
+          playerName,
+          action: "select_stat" as const,
+          selectedStat: stat,
+        };
+        console.log('Making stat selection move:', statMoveData);
+        await makeMove(statMoveData);
+      }
       
-      await makeMove(moveData);
-      console.log(`Stat selection complete: ${stat}`);
       // State updates are handled by useQuery re-fetching lobbyData
     } catch (err: any) {
-      console.error("Failed to select stat:", err);
-      setError(`Error selecting stat: ${err.message || err}`);
+      console.error("Failed to perform action:", err);
+      setError(`Error: ${err.message || err}`);
     }
   };
 
   const handleCardSelection = async (cardId: Id<"iplstats">) => {
+  console.log("🔵 handleCardSelection fired for:", cardId);
     // Extra validation
      if (!isMyTurn || gamePhase !== 'card_selection' || !lobbyId || !playerName) {
         console.warn("Card selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName });
@@ -335,17 +328,22 @@ export default function MultiplayerGameBoard() {
       console.log(`[UI] Playing Card: ${cardId} with Booster: ${activeBooster}`);
       
       // Show what we're sending to the server
-      const moveData = {
+      // Only include useBooster if it has a valid value (not null or undefined)
+      const moveData: any = {
         lobbyId,
         playerName,
         action: "play_card",
         selectedCardId: cardId,
-        useBooster: activeBooster ?? undefined, // Convert null to undefined
       };
+      
+      // Only add useBooster if it's a valid value
+      if (activeBooster === "orange" || activeBooster === "purple" || activeBooster === "teamrank") {
+        moveData.useBooster = activeBooster;
+      }
       console.log('Making move with data:', moveData);
       
       await makeMove(moveData);
-      console.log(`Card play complete: ${cardId}`);
+      console.log(`Card played: ${cardId}`);
       setActiveBooster(null); // Reset local booster selection after playing card
     } catch (err: any) {
       console.error("Failed to play card:", err);
@@ -392,7 +390,8 @@ export default function MultiplayerGameBoard() {
   }, [gameOver, lobbyData?.playerScores]); // Depend on gameOver and the derived playerScores
  
  
-  // --- UI Rendering ---\
+  // --- UI Rendering ---
+
 
   // Handle case where user lands here without proper setup
   if (!lobbyId || !playerName) {
@@ -408,74 +407,9 @@ export default function MultiplayerGameBoard() {
       );
   }
 
-  // Loading state while lobby data is fetched
-  if (isLoadingLobby) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
-        <Loader2 className="w-12 h-12 animate-spin mr-2" /> Loading Game Data...
-      </div>
-    );
-  }
-
-  // Handle case where lobby data failed to load (e.g., lobby deleted)
-  if (!lobbyData) {
-    return (
-        <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white p-4">
-              <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
-              <h1 className="text-2xl font-bold mb-2">Error</h1>
-              <p className="mb-4 text-center">Could not load lobby data for Lobby ID: {lobbyId}. It might have been deleted or an error occurred.</p>
-              <button onClick={handleLeaveGame} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white">
-                  Return to Lobby
-              </button>
-          </div>
-    );
-  }
-
-  // Define the key stats that can be selected during the game
-
-  // Start timer when player changes or game phase changes to stat/card selection
-  useEffect(() => {
-    // Don't start timer if we're not in an active selection phase
-    if ((gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn) {
-      // Reset timer
-      setTimeLeft(15);
-      
-      // Clear any existing timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      
-      // Start new timer
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            // Time's up - auto select if needed
-            clearInterval(timerRef.current!);
-            timerRef.current = null;
-            // Auto-selection logic would go here
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      // If not in selection phase or not my turn, pause the timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-    
-    // Clean up on unmount
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [gamePhase, currentPlayer, isMyTurn]);
-
+  // Initial waiting overlay: show before gamePhase/currentPlayer ready
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
+    <div className="relative min-h-screen flex flex-col bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
       {/* Top Bar: Player Scores & Status - Styled like single player */}
       <div className="bg-gradient-to-r from-blue-900 to-indigo-900 p-3 shadow-md flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -525,8 +459,7 @@ export default function MultiplayerGameBoard() {
       </div>
       
       {/* Game Board Content - Full Screen */}
-      <div className="relative flex-grow">
-
+      <div className="flex-grow relative">
            {/* Error Display */}
            {error && (
               <motion.div
@@ -593,103 +526,264 @@ export default function MultiplayerGameBoard() {
                      <p className="text-xl text-white font-medium">Waiting for {currentPlayer}'s move...</p>
                   </div>
               )}
-              {isLoadingHand ? (
-                  <div className="h-full flex items-center justify-center text-gray-400">
-                      <Loader2 className="w-8 h-8 animate-spin mr-3" /> 
-                      <span className="text-lg">Loading Game...</span>
+              <div className="w-full h-[calc(100vh-64px)] relative"> {/* Fixed height calculation */}
+                {handToRender.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-10">
+                    <div className="bg-black/50 p-8 rounded-lg text-center max-w-md">
+                      <h2 className="text-2xl font-bold text-white mb-4">{gamePhase === 'game_over' ? 'Game Over' : 'Waiting for Cards'}</h2>
+                      <p className="text-gray-300">{gamePhase === 'game_over' ? 'The game has ended.' : 'Waiting for the game to start...'}</p>
+                    </div>
                   </div>
-              ) : userHandCardsData && userHandCardsData.length > 0 ? (
-                  <div className="w-full h-[calc(100vh-64px)] relative"> {/* Fixed height calculation */}
-                      {/* Game Phase Indicator - Appears as overlay */}
-                      {gamePhase === 'stat_selection' && isMyTurn && (
-                          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
-                              <h2 className="text-xl font-bold text-white mb-2">Select Stat to Play</h2>
-                              <p className="text-sm text-blue-200">Click on a stat from your card to compete with</p>
-                          </div>
-                      )}
-                      
-                      <Canvas camera={{ position: [0, 5, 10], fov: 50 }}>
-                          <ambientLight intensity={0.7} /> {/* Increased intensity */}
-                          <pointLight position={[10, 10, 10]} intensity={1.0} />
-                          <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
-                          <Suspense fallback={null}>
-                              <MultiplayerCardHand
-                                  cards={userHandCardsData as PlayerCardData[]}
-                                  onCardSelect={handleCardSelection}
-                                  onStatSelect={handleCardStatSelection}
-                                  isSelectable={isMyTurn && (gamePhase === 'card_selection' || gamePhase === 'stat_selection')}
-                                  gamePhase={gamePhase || ''}
-                                  currentPlayer={playerName || ''} 
-                                  selectedStat={selectedStat || ''}
-                                  players={players}
-                                  playedCards={currentHandPlayedCards.map(played => ({
-                                      playerId: played.playerId,
-                                      card: played.card,
-                                      isLeading: leadingCardInfo?.playerId === played.playerId
-                                  }))}
+                )}
+                {/* Game Phase Indicator - Appears as overlay */}
+                {gamePhase === 'stat_selection' && isMyTurn && (
+                  <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
+                    <h2 className="text-xl font-bold text-white mb-2">Select Stat to Play</h2>
+                    <p className="text-sm text-blue-200">Click on a stat from your card to compete with</p>
+                  </div>
+                )}
+                
+                {/* Always render the 3D scene with the table, regardless of game state */}
+                <Canvas 
+                  camera={{ position: [0, 5, 10], fov: 50 }}
+                  frameloop="demand" // Only render when needed
+                  key="game-canvas" // Stable key to prevent recreation
+                >
+                  <ambientLight intensity={0.7} /> {/* Increased intensity */}
+                  <pointLight position={[10, 10, 10]} intensity={1.0} />
+                  <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+                  <Suspense fallback={null}>
+                    <GameTable /> {/* Memoized table component */}
+                    
+                    {/* Always render the card hand component */}
+                    {handToRender.length > 0 && (
+                      <MemoizedCardHand
+                        cards={handToRender}
+                        onCardSelect={handleCardSelection}
+                        onStatSelect={handleStatSelection}
+                        isSelectable={isMyTurn && (gamePhase === 'card_selection' || gamePhase === 'stat_selection')}
+                        gamePhase={gamePhase || ''}
+                        currentPlayer={playerName || ''} 
+                        selectedStat={selectedStat || ''}
+                        players={players}
+                        playedCards={currentHandPlayedCards}
+                        leadingCardInfo={leadingCardInfo}
+                      />
+                    )}
+                  </Suspense>
+                </Canvas>
+                
+                {/* Floating Booster Buttons - Only show when player has cards and it's card selection phase */}
+                {handToRender.length > 0 && (
+                  <div className="absolute bottom-8 left-8 flex flex-col gap-4 z-20">
+                    <BoosterButton
+                      type="orange"
+                      isActive={activeBooster === 'orange'}
+                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.orange}
+                      onClick={() => handleBoosterToggle('orange')}
+                    />
+                    <BoosterButton
+                      type="purple"
+                      isActive={activeBooster === 'purple'}
+                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.purple}
+                      onClick={() => handleBoosterToggle('purple')}
+                    />
+                    <BoosterButton
+                      type="teamrank"
+                      isActive={activeBooster === 'teamrank'}
+                      isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.teamrank}
+                      onClick={() => handleBoosterToggle('teamrank')}
+                    />
+                  </div>
+                )}
+                
+                {/* Current Round Display - Exactly like single-player version */}
+                {currentHandPlayedCards && currentHandPlayedCards.length > 0 && (
+                  <div className="absolute top-20 left-0 right-0 mx-auto w-full max-w-5xl px-4 z-20">
+                    <div className="bg-blue-900/40 backdrop-blur-md rounded-xl p-6">
+                      <div className="grid grid-cols-4 gap-6">
+                        {currentHandPlayedCards.map((card, index) => {
+                          // Convert from MultiPlayer card format to SinglePlayer format
+                          const singlePlayerCard = {
+                            playerId: card.playerId,
+                            card: {
+                              Player_Name: card.cardName,
+                              team: card.team || 'Unknown Team'
+                              // Other card properties not needed for display
+                            },
+                            boosterUsed: card.boosterUsed,
+                            finalValue: card.finalValue
+                          };
+                          
+                          // Get team color for glow effect
+                          const teamColor = getTeamColor(singlePlayerCard.card.team);
+                          
+                          return (
+                            <motion.div
+                              key={card.cardId}
+                              whileHover={{ 
+                                scale: 1.05,
+                                y: -5,
+                                zIndex: 30,
+                                transition: { duration: 0.2 }
+                              }}
+                              animate={{
+                                boxShadow: leadingCardInfo?.cardId === card.cardId 
+                                  ? ['0 0 10px rgba(255, 215, 0, 0.4)', '0 0 20px rgba(255, 215, 0, 0.6)', '0 0 10px rgba(255, 215, 0, 0.4)'] 
+                                  : ['0 0 0px rgba(0, 0, 0, 0)', '0 0 0px rgba(0, 0, 0, 0)'],
+                                transition: {
+                                  repeat: Infinity,
+                                  repeatType: 'reverse',
+                                  duration: 1.5
+                                }
+                              }}
+                              className="relative rounded-xl overflow-hidden"
+                              style={{ 
+                                transformStyle: 'preserve-3d',
+                                transformOrigin: 'center center'
+                              }}
+                            >
+                              <PlayedCardDisplay
+                                playedCard={singlePlayerCard}
+                                selectedStat={gameState.selectedStat || 'Batting_Average'} 
+                                isLeading={leadingCardInfo?.cardId === card.cardId}
                               />
-                          </Suspense>
-                      </Canvas>
-                      
-                      {/* Floating Booster Buttons */}
-                      <div className="absolute bottom-8 left-8 flex flex-col gap-4 z-20">
-                          <BoosterButton
-                              type="orange"
-                              isActive={activeBooster === 'orange'}
-                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.orange}
-                              onClick={() => handleBoosterToggle('orange')}
-                          />
-                          <BoosterButton
-                              type="purple"
-                              isActive={activeBooster === 'purple'}
-                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.purple}
-                              onClick={() => handleBoosterToggle('purple')}
-                          />
-                          <BoosterButton
-                              type="teamrank"
-                              isActive={activeBooster === 'teamrank'}
-                              isAvailable={isMyTurn && gamePhase === 'card_selection' && userBoosters.teamrank}
-                              onClick={() => handleBoosterToggle('teamrank')}
-                          />
+                            </motion.div>
+                          );
+                        })}
                       </div>
-                      
-                      {/* Turn Indicator Overlay - Only for card selection phase */}
-                      {isMyTurn && gamePhase === 'card_selection' && (
-                          <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
-                              <h2 className="text-xl font-bold text-white mb-2">Select a Card to Play</h2>
-                              <p className="text-sm text-blue-200">Choose a card to compete with {selectedStat}</p>
-                          </div>
-                      )}
-                      
-                      {/* Winner Notification */}
-                      {leadingCardInfo && gamePhase === 'round_end' && (
-                          <motion.div
-                              initial={{ opacity: 0, y: -20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-yellow-600/80 backdrop-blur-sm 
-                                        px-6 py-3 rounded-xl z-30 text-center border-2 border-yellow-400"
-                          >
-                              <h3 className="text-xl font-bold text-white mb-1">
-                                  {leadingCardInfo.playerId || 'Player'} wins the round!
-                              </h3>
-                              <p className="text-yellow-200">
-                                  With a {formatStatLabel(selectedStat || '')} value of {formatStatValue(
-                                      typeof leadingCardInfo.finalValue === 'number' ? leadingCardInfo.finalValue : 0, 
-                                      selectedStat || '')}
-                              </p>
-                          </motion.div>
-                      )}
+                    </div>
                   </div>
-              ) : (
-                  <div className="h-full flex items-center justify-center">
-                      <div className="bg-black/30 backdrop-blur-sm p-8 rounded-lg text-center max-w-md">
-                          <h2 className="text-2xl font-bold text-white mb-4">{gamePhase === 'game_over' ? 'Game Over' : 'Waiting for Cards'}</h2>
-                          <p className="text-gray-300">{gamePhase === 'game_over' ? 'The game has ended.' : 'Waiting for the game to start...'}</p>
-                      </div>
+                )}
+                
+                {/* Overlay messages for waiting or game over states */}
+                {handToRender.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-10">
+                    <div className="bg-black/50 p-8 rounded-lg text-center max-w-md">
+                      <h2 className="text-2xl font-bold text-white mb-4">{gamePhase === 'game_over' ? 'Game Over' : 'Waiting for Cards'}</h2>
+                      <p className="text-gray-300">{gamePhase === 'game_over' ? 'The game has ended.' : 'Waiting for the game to start...'}</p>
+                    </div>
                   </div>
-              )}
+                )}
+                
+                {/* Turn Indicator Overlay - Only for card selection phase */}
+                {isMyTurn && gamePhase === 'card_selection' && (
+                  <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
+                    <h2 className="text-xl font-bold text-white mb-2">Select a Card to Play</h2>
+                    <p className="text-sm text-blue-200">Choose a card to compete with {selectedStat}</p>
+                  </div>
+                )}
+                
+                {/* Winner Notification */}
+                {leadingCardInfo && gamePhase === 'round_end' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-yellow-600/80 backdrop-blur-sm 
+                                    px-6 py-3 rounded-xl z-30 text-center border-2 border-yellow-400"
+                  >
+                    <h3 className="text-xl font-bold text-white mb-1">
+                      {leadingCardInfo.playerId || 'Player'} wins the round!
+                    </h3>
+                    <p className="text-yellow-200">
+                      With a {formatStatLabel(selectedStat || '')} value of {formatStatValue(
+                        typeof leadingCardInfo.finalValue === 'number' ? leadingCardInfo.finalValue : 0, 
+                        selectedStat || '')}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
           </div>
       </div>
+      {/* Absolute positioned navbar with winner circles matching single-player version */}
+      <div className="absolute top-0 left-0 right-0 p-4 bg-blue-900/90 backdrop-blur-md z-10 border-b border-blue-700">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-bold text-white">IPL Cricket Cards - Multiplayer</h1>
+            <div className="flex items-center space-x-2 bg-blue-800/50 px-3 py-1 rounded-lg">
+              <span className="text-sm text-gray-300">Round:</span>
+              <span className="text-lg font-bold text-white">
+                {lobbyData?.gamePhase !== 'game_over' ? (lobbyData?.completedHands?.length ?? 0) + 1 : (lobbyData?.completedHands?.length ?? 0)} / {lobbyData?.maxRounds ?? 0}
+              </span>
+            </div>
+          </div>
+          
+          {/* Timer in center - exactly like single player */}
+          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn && (
+            <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center 
+                                border-2 ${timeLeft <= 5 ? 'border-red-500' : 'border-blue-400'}`}>
+                  <span className={`text-xl font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-white'}`}>
+                    {timeLeft}
+                  </span>
+                </div>
+              </motion.div>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-4">
+            <span className="text-white mr-3">Current Player: {currentPlayer || 'Waiting...'}</span>
+            <div className="flex items-center space-x-2">
+              {/* Winner circles - EXACT match to single player implementation */}
+              {[...Array(5)].map((_, i) => {
+                // Get the completed hand for this round index, if it exists
+                const completedHand = (lobbyData?.completedHands || [])[i];
+                const roundWinner = completedHand?.winner?.playerId; // Get player ID of winner
+                
+                // Extract initials from winner name (just like single player)
+                const nameParts = roundWinner?.split(' ') || [];
+                // Just use the first character if only one name, or first letters of first+last name
+                const initial = roundWinner 
+                  ? nameParts.length > 1 
+                    ? nameParts[0].charAt(0) + nameParts[1].charAt(0)
+                    : nameParts[0]?.charAt(0)
+                  : '';
+                
+                return (
+                  <div 
+                    key={i}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+                      ${roundWinner 
+                        ? 'bg-blue-800 border-2 border-yellow-400' 
+                        : 'bg-blue-700/50 border border-blue-500'
+                      }`}
+                    title={roundWinner || `Round ${i+1} - Not Played`}
+                  >
+                    {roundWinner 
+                      ? <span className="text-yellow-400">{initial}</span> 
+                      : <span className="text-white opacity-70">👑</span>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+            <button 
+              onClick={handleLeaveGame} 
+              className="flex items-center space-x-1 bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-sm font-medium transition-colors"
+            >
+              <LogOut size={16} /> <span>Exit</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* Initial waiting overlay: show before gamePhase/currentPlayer ready */}
+      {(!gamePhase || !currentPlayer) && gamePhase !== 'game_over' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm z-50">
+          <Loader2 className="w-16 h-16 animate-spin text-white mb-4" />
+          <p className="text-xl text-white">Waiting for game to start...</p>
+        </div>
+      )}
+      
+      {/* Debug console log */}
+      {console.log("Debug Played Cards:", { 
+        hasCards: currentHandPlayedCards && currentHandPlayedCards.length > 0, 
+        selectedStat: gameState.selectedStat,
+        numCards: currentHandPlayedCards?.length || 0
+      })}
     </div>
   );
 }

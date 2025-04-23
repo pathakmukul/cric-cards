@@ -88,7 +88,7 @@ const teamConfigs: Record<string, {
   MI:   { svgPath: '/mi.svg',  color: '#0065AA', blending: THREE.NormalBlending }, 
   RR:   { svgPath: '/rr.svg',  color: '#E60693' },
   SRH:  { svgPath: '/srh.svg', color: '#FF822A', blending: THREE.NormalBlending }, 
-  LSG:  { svgPath: '/lsg.svg', color: '#32a8a8' }, 
+  LSG:  { svgPath: '/lsg.svg', color: '#A7D5F6' }, 
   GT:   { svgPath: '/gt.svg',  color: '#1B2133', materialTintColor: '#ffffff' }, // Override tint to white
   KKR:  { svgPath: '/kkr.svg', color: '#552583' },
   DC:   { svgPath: '/dc.svg',  color: '#D71921', blending: THREE.NormalBlending, materialTintColor: '#ffffff' }, // Override tint to white
