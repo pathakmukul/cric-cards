@@ -148,18 +148,22 @@ export default function MultiplayerGameBoard() {
   // Get URL parameters and localStorage values
   const { lobbyId: lobbyIdParam } = useParams();
   const location = useLocation();
-  const playerNameFromUrl = new URLSearchParams(location.search).get('player');
+  const searchParams = new URLSearchParams(location.search);
+  const playerNameFromUrl = searchParams.get('player');
+  const lobbyIdFromUrl = searchParams.get('lobbyId');
   const lobbyIdFromStorage = typeof window !== 'undefined' ? localStorage.getItem('cricCards_lobbyId') : '';
   const playerNameFromStorage = typeof window !== 'undefined' ? localStorage.getItem('cricCards_playerName') : '';
-  // Use param, then storage, then fallback
-  const lobbyId = lobbyIdParam || lobbyIdFromStorage || '';
+  
+  // Use URL params first, then route params, then storage, then fallback
+  const lobbyId = lobbyIdFromUrl || lobbyIdParam || lobbyIdFromStorage || '';
   const [playerName, setPlayerName] = useState<string>(playerNameFromUrl || playerNameFromStorage || '');
 
   // Redirect to lobby if missing info
   useEffect(() => {
     if (!lobbyId || !playerName) {
       setTimeout(() => {
-        navigate('/lobby');
+        // Redirect to home page instead of lobby on error
+        navigate('/');
       }, 1000);
     }
   }, [lobbyId, playerName, navigate]);
@@ -214,7 +218,7 @@ export default function MultiplayerGameBoard() {
       playerHands: (lobbyData?.playerHands as PlayerHandsMap) ?? {},
       currentHandPlayedCards: lobbyData?.currentHand?.playedCards || [],
       leadingCardInfo: lobbyData?.currentHand?.leadingCard, // Can be object or undefined
-      selectedStat: lobbyData?.currentHand?.selectedStat
+      selectedStat: lobbyData?.selectedStat // Fixed to use the root-level selectedStat
     };
   }, [lobbyData]);
   
@@ -254,6 +258,104 @@ export default function MultiplayerGameBoard() {
   useEffect(() => {
     console.log('[Debug] gameOver variable:', gameOver);
   }, [gameOver]);
+  
+  // Track if an auto-play is in progress to prevent duplicate actions
+  const autoPlayInProgressRef = useRef(false);
+  
+  // Timer logic for player turns
+  useEffect(() => {
+    // Clear any existing timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Reset auto-play flag when turn/phase changes
+    autoPlayInProgressRef.current = false;
+    
+    // Only start timer when it's player's turn and in an active phase
+    if (isMyTurn && (gamePhase === 'stat_selection' || gamePhase === 'card_selection')) {
+      // Reset timer to 15 seconds
+      setTimeLeft(15);
+      
+      // Start countdown
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          const newTime = prev - 1;
+          
+          // If time runs out, auto-play
+          if (newTime <= 0) {
+            // Clear timer
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+            
+            // Only proceed if another auto-play isn't already in progress
+            if (!autoPlayInProgressRef.current && userHandCardsData?.length > 0) {
+              // Set flag to prevent duplicate actions
+              autoPlayInProgressRef.current = true;
+              
+              try {
+                // Auto-play logic with error handling
+                if (gamePhase === 'stat_selection') {
+                  // Use the first card in hand to determine best stats
+                  const card = userHandCardsData[0];
+                  
+                  // Import the function from MultiplayerCardHand
+                  // This avoids circular imports by using the same logic at runtime
+                  let bestStats;
+                  try {
+                    // First try to use the imported function if available
+                    const { getBestStatsForCard } = require('./MultiplayerCardHand');
+                    bestStats = getBestStatsForCard(card);
+                  } catch (e) {
+                    // Fallback to basic stats if import fails
+                    const playerType = card.Wickets_Taken > 50 ? 'bowler' : 
+                                      card.Runs_Scored > 1000 ? 'batsman' : 'allrounder';
+                    
+                    bestStats = playerType === 'batsman' ? 
+                      ['Batting_Average', 'Batting_Strike_Rate', 'Runs_Scored'] :
+                      playerType === 'bowler' ? 
+                      ['Wickets_Taken', 'Economy_Rate', 'Bowling_Average'] :
+                      ['Runs_Scored', 'Wickets_Taken', 'Batting_Average'];
+                  }
+                  
+                  // Select the best stat for this card
+                  const bestStat = bestStats[0] || 'Batting_Average'; // Fallback
+                  console.log(`[Auto-play] Timer expired - Auto-selecting best stat: ${bestStat}`);
+                  handleStatSelection(bestStat);
+                } else if (gamePhase === 'card_selection') {
+                  // Auto-play first card
+                  const firstCardId = userHandCardsData[0]._id;
+                  console.log(`[Auto-play] Timer expired - Auto-playing card: ${firstCardId}`);
+                  // Need to use a synthetic event structure for stopPropagation
+                  handleCardSelection(firstCardId, { stopPropagation: () => {} } as React.MouseEvent);
+                }
+              } catch (error) {
+                console.error('[Auto-play] Error during auto-play:', error);
+                // Reset flag if auto-play failed
+                autoPlayInProgressRef.current = false;
+              }
+            }
+          }
+          
+          return Math.max(0, newTime);
+        });
+      }, 1000);
+    } else {
+      // Not player's turn, reset timer display
+      setTimeLeft(15);
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isMyTurn, gamePhase, userHandCardsData]);
 
   // Initial waiting overlay: show before gamePhase/currentPlayer ready
   const handToRender = (userHandCardsData && userHandCardsData.length > 0)
@@ -313,8 +415,11 @@ export default function MultiplayerGameBoard() {
     }
   };
 
-  const handleCardSelection = async (cardId: Id<"iplstats">) => {
-  console.log("🔵 handleCardSelection fired for:", cardId);
+  const handleCardSelection = async (cardId: Id<"iplstats">, e?: React.MouseEvent | React.PointerEvent) => {
+    // Stop event propagation to prevent duplicate calls - crucial fix for card play errors
+    if (e) e.stopPropagation();
+    
+    console.log("🔵 handleCardSelection fired for:", cardId);
     // Extra validation
      if (!isMyTurn || gamePhase !== 'card_selection' || !lobbyId || !playerName) {
         console.warn("Card selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName });
@@ -363,6 +468,85 @@ export default function MultiplayerGameBoard() {
       localStorage.removeItem('cricCards_isHost'); // May not be relevant here but good practice
       navigate('/lobby');
   };
+  
+  // Get all cards for the game setup
+  const allCardsRaw = useQuery(api.cards.getAll) || [];
+  
+  // Function to filter out cards with empty or zero stats
+  const filterValidCards = (cards: any[]) => {
+    return cards.filter(card => {
+      // Check if the card has at least some non-zero stats
+      const hasNonZeroStats = [
+        card.Batting_Average,
+        card.Batting_Strike_Rate,
+        card.Runs_Scored,
+        card.Wickets_Taken,
+        card.Centuries,
+        card.Half_Centuries,
+        card.Sixes,
+        card.Fours,
+        card.Economy_Rate,
+        card.Bowling_Average,
+        card.Bowling_Strike_Rate
+      ].some(stat => {
+        // Convert to number if it's a string
+        const numStat = typeof stat === 'string' ? parseFloat(stat) : stat;
+        // Check if it's a valid number greater than 0
+        return numStat !== undefined && numStat !== null && !isNaN(numStat) && numStat > 0;
+      });
+      
+      return hasNonZeroStats;
+    });
+  };
+  
+  // Filter out cards with all zeros or empty stats
+  const allCards = filterValidCards(allCardsRaw);
+  
+  // Create mutation for resetting a game
+  const resetGame = useMutation(api.multiplayer.resetGame);
+
+  const handlePlayAgain = async () => {
+    if (!lobbyId || !allCards) return;
+    
+    // Check if current player is host (only host can reset game)
+    const isHost = lobbyData?.hostPlayerName === playerName;
+    if (!isHost) {
+      alert("Only the host can restart the game.");
+      return;
+    }
+    
+    try {
+      // Get all available cards for the new game - filter out cards with all zero/empty stats
+      // We're using the filtered allCards which already excludes cards with all zero/empty stats
+      const cardIds = allCards.map(card => card._id);
+      
+      console.log(`[Play Again] Using ${cardIds.length} valid cards out of ${allCardsRaw.length} total cards`);
+      
+      // Keep the same boosters data
+      const orangeCapPlayer = lobbyData?.orangeCapPlayer || "Virat Kohli";
+      const purpleCapPlayer = lobbyData?.purpleCapPlayer || "Jasprit Bumrah";
+      const teamRankings = lobbyData?.teamRankings || {
+        "Mumbai Indians": 1,
+        "Chennai Super Kings": 2,
+        "Royal Challengers Bangalore": 3,
+        "Delhi Capitals": 4
+      };
+      
+      // Reset the game with the same players in the same lobby
+      await resetGame({
+        lobbyId,
+        playerName: playerName,
+        orangeCapPlayer,
+        purpleCapPlayer,
+        teamRankings,
+        availableCards: cardIds
+      });
+      
+      console.log("Game reset successfully!");
+    } catch (error) {
+      console.error("Error restarting game:", error);
+    }
+  };
 
 
   // --- Game Over Logic ---
@@ -399,9 +583,9 @@ export default function MultiplayerGameBoard() {
           <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white p-4">
               <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
               <h1 className="text-2xl font-bold mb-2">Error</h1>
-              <p className="mb-4 text-center">Missing Player Name or Lobby ID. Please return to the lobby.</p>
+              <p className="mb-4 text-center">Missing Player Name or Lobby ID. Returning Home</p>
               <button onClick={() => navigate('/lobby')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white">
-                  Go to Lobby
+                  Redirecting...
               </button>
           </div>
       );
@@ -507,12 +691,20 @@ export default function MultiplayerGameBoard() {
                                        </li>
                                    ))}
                           </ul>
-                        <button
-                            onClick={handleLeaveGame}
-                            className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 rounded text-black font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-300"
-                        >
-                            Return to Lobby
-                        </button>
+                        <div className="flex justify-center space-x-4">
+                            <button
+                                onClick={handlePlayAgain}
+                                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded text-white font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
+                            >
+                                Play Again
+                            </button>
+                            <button
+                                onClick={handleLeaveGame}
+                                className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 rounded text-black font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                            >
+                                Return to Lobby
+                            </button>
+                        </div>
                         </div>
                     </motion.div>
                   )}
@@ -564,10 +756,11 @@ export default function MultiplayerGameBoard() {
                         isSelectable={isMyTurn && (gamePhase === 'card_selection' || gamePhase === 'stat_selection')}
                         gamePhase={gamePhase || ''}
                         currentPlayer={playerName || ''} 
-                        selectedStat={selectedStat || ''}
+                        selectedStat={lobbyData?.selectedStat} 
                         players={players}
                         playedCards={currentHandPlayedCards}
                         leadingCardInfo={leadingCardInfo}
+                        playerHands={lobbyData?.playerHands || {}}
                       />
                     )}
                   </Suspense>
@@ -670,7 +863,10 @@ export default function MultiplayerGameBoard() {
                 {isMyTurn && gamePhase === 'card_selection' && (
                   <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-blue-600/80 backdrop-blur-sm px-6 py-3 rounded-lg z-30 text-center">
                     <h2 className="text-xl font-bold text-white mb-2">Select a Card to Play</h2>
-                    <p className="text-sm text-blue-200">Choose a card to compete with {selectedStat}</p>
+                    <p className="text-sm text-blue-200">
+                      Choose a card for: <span className="font-bold text-yellow-300">{formatStatLabel(lobbyData?.selectedStat || '')}</span>
+                    </p>
+                    
                   </div>
                 )}
                 

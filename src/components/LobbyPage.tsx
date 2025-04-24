@@ -27,7 +27,7 @@ interface PlayerCardData {
   Five_Wicket_Hauls: number;
 }
 
-export default function LobbyPage() {
+export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
   const navigate = useNavigate();
   const [playerName, setPlayerName] = useState('');
   const [error, setError] = useState('');
@@ -39,14 +39,48 @@ export default function LobbyPage() {
   // Track API initialization status
   const [apiError, setApiError] = useState(false);
   const [isLoadingLobbyData, setIsLoadingLobbyData] = useState(false);
+  const [hasAutoStarted, setHasAutoStarted] = useState(false);
   
   // Use proper hook pattern for Convex
   let createLobbyMut = null;
   let joinLobbyMut = null;
   let startGameMut = null;
+  let findOrJoinPvPLobbyMut = null;
   
-  // Fetch game data directly
-  const allCardsData = useQuery(api.cards.getAll);
+  // Get all cards for the game setup
+  const allCardsRaw = useQuery(api.cards.getAll);
+  
+  // Function to filter out cards with empty or zero stats
+  const filterValidCards = (cards: any[]) => {
+    if (!cards) return [];
+    
+    return cards.filter(card => {
+      // Check if the card has at least some non-zero stats
+      const hasNonZeroStats = [
+        card.Batting_Average,
+        card.Batting_Strike_Rate,
+        card.Runs_Scored,
+        card.Wickets_Taken,
+        card.Centuries,
+        card.Half_Centuries,
+        card.Sixes,
+        card.Fours,
+        card.Economy_Rate,
+        card.Bowling_Average,
+        card.Bowling_Strike_Rate
+      ].some(stat => {
+        // Convert to number if it's a string
+        const numStat = typeof stat === 'string' ? parseFloat(stat) : stat;
+        // Check if it's a valid number greater than 0
+        return numStat !== undefined && numStat !== null && !isNaN(numStat) && numStat > 0;
+      });
+      
+      return hasNonZeroStats;
+    });
+  };
+  
+  // Filter out cards with all zeros or empty stats
+  const allCardsData = filterValidCards(allCardsRaw);
   const boostersData = useQuery(api.cards.getBoosters);
   const teamRankingsData = useQuery(api.cards.getTeamRankings);
   
@@ -62,14 +96,12 @@ export default function LobbyPage() {
     createLobbyMut = useMutation(api.multiplayer.createLobby);
     joinLobbyMut = useMutation(api.multiplayer.joinLobby);
     startGameMut = useMutation(api.multiplayer.startGame);
+    if (isPvP) findOrJoinPvPLobbyMut = useMutation(api.multiplayer.findOrJoinPvPLobby);
   } catch (err) {
     console.error("Convex API hooks failed:", err);
   }
   
-  const myLobbies = useQuery(
-    api.multiplayer.getMyLobbies,
-    playerName ? { playerName } : "skip"
-  );
+  // Removed the myLobbies query as we no longer show rejoin options
   
   const activeLobbyData = useQuery(
     api.multiplayer.getLobbyData, 
@@ -102,13 +134,57 @@ export default function LobbyPage() {
 
   useEffect(() => {
     if (activeLobbyData && activeLobbyData.gameStarted) {
-      // Include player name in URL for better testing in multiple tabs
-      const gameUrl = `/multiplayer?player=${encodeURIComponent(playerName)}`;
+      // Include both player name and lobbyId in URL parameters
+      const gameUrl = `/multiplayer?player=${encodeURIComponent(playerName)}&lobbyId=${encodeURIComponent(activeLobbyId || '')}`;
       console.log(`Game started (lobby ${activeLobbyId}), navigating ${playerName} to ${gameUrl}`);
       navigate(gameUrl);
     }
   }, [activeLobbyData, navigate, activeLobbyId, playerName]);
-  
+
+  useEffect(() => {
+    console.log("PvP auto-start debug:", {
+      isPvP,
+      isHost: playerName === activeLobbyData?.hostPlayerName,
+      playersCount: activeLobbyData?.players?.length,
+      hasAutoStarted,
+      gameStarted: activeLobbyData?.gameStarted,
+      hasMutation: !!startGameMut,
+      hasLobbyId: !!activeLobbyId,
+      hasCards: allCardsData?.length,
+      orangeCapPlayer,
+      purpleCapPlayer,
+      teamRankingsLoaded: teamRankings && Object.keys(teamRankings).length
+    });
+    if (
+      isPvP &&
+      playerName === activeLobbyData?.hostPlayerName &&
+      activeLobbyData?.players?.length === 4 &&
+      !hasAutoStarted &&
+      !activeLobbyData?.gameStarted &&
+      startGameMut &&
+      activeLobbyId &&
+      allCardsData &&
+      orangeCapPlayer &&
+      purpleCapPlayer &&
+      teamRankings
+    ) {
+      console.log("PvP lobby full, auto-starting game...");
+      
+      const startGameArgs = {
+        lobbyId: activeLobbyId,
+        playerName: activeLobbyData.hostPlayerName, // Use host's name from lobby data
+        orangeCapPlayer,
+        purpleCapPlayer,
+        teamRankings,
+        availableCards: allCardsData.map((card: any) => card._id)
+      };
+      
+      startGameMut(startGameArgs)
+        .catch(err => console.error("Failed to start PvP game:", err));
+      setHasAutoStarted(true);
+    }
+  }, [isPvP, activeLobbyData, startGameMut, activeLobbyId, playerName, allCardsData, orangeCapPlayer, purpleCapPlayer, teamRankings, hasAutoStarted]);
+
   const handleCreateLobby = async () => {
     if (!playerName.trim()) {
       setError('Please enter your name');
@@ -224,8 +300,8 @@ export default function LobbyPage() {
         orangeCapPlayer: orangeCapPlayer, // Use extracted value
         purpleCapPlayer: purpleCapPlayer, // Use extracted value
         teamRankings: teamRankings, // Use extracted value
-        // Add type annotation here:
-        availableCards: allCardsData.map((card: any) => card._id), // Ensure we map correctly to _id
+        // Filter out cards with all zeros or empty stats and map to IDs
+        availableCards: allCardsData.map((card: any) => card._id) // We're already using filtered cards
       };
       
       await startGameMut(startGameArgs);
@@ -244,8 +320,24 @@ export default function LobbyPage() {
     localStorage.removeItem('cricCards_isHost');
     setActiveLobbyId(null);
     setError('');
+    navigate('/');
   };
   
+  const handleFindMatch = async () => {
+    if (!playerName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+    setError('');
+    if (!findOrJoinPvPLobbyMut) return;
+    try {
+      const res = await findOrJoinPvPLobbyMut({ playerName });
+      setActiveLobbyId(res.lobbyId);
+    } catch (err: any) {
+      setError(err.message || String(err));
+    }
+  };
+
   if (apiError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">
@@ -349,11 +441,11 @@ export default function LobbyPage() {
           </div>
           
           {error && (
-            <p className="mb-4 text-red-400 text-center text-sm">{error}</p>
+            <p className="mb-4 text-red-400 text-center">{error}</p>
           )}
           
           <div className="flex flex-col gap-3">
-            {isHost && (
+            {isHost && !isPvP && (
               <button
                 onClick={handleStartGame}
                 disabled={!canStart || isLoadingLobbyData}
@@ -376,13 +468,13 @@ export default function LobbyPage() {
             </button>
           </div>
           
-          {isHost && !canStart && (
+          {isHost && !isPvP && !canStart && (
             <p className="text-yellow-400 text-sm mt-2 text-center">
               Need at least 2 players to start the game
             </p>
           )}
           
-          {!isHost && (
+          {!isPvP && !isHost && (
             <p className="text-gray-400 text-sm mt-4 text-center">
               Waiting for host to start the game...
             </p>
@@ -419,7 +511,7 @@ export default function LobbyPage() {
             <Cricket className="w-16 h-16 text-white" />
           </div>
           
-          <h1 className="text-3xl font-bold text-white text-center mb-6">Multiplayer Lobby</h1>
+          <h1 className="text-3xl font-bold text-white text-center mb-6">{isPvP ? "PvP Matchmaking" : "Multiplayer Lobby"}</h1>
           
           <div className="mb-6">
             <label className="block text-gray-300 text-sm font-medium mb-2">
@@ -441,6 +533,7 @@ export default function LobbyPage() {
             <p className="mb-4 text-red-400 text-center bg-red-900/50 p-2 rounded">{error}</p>
           )}
 
+          {!isPvP && (
           <div className="mb-6">
             <label className="block text-gray-300 text-sm font-medium mb-2">
               Join by Code
@@ -467,44 +560,12 @@ export default function LobbyPage() {
               </button>
             </div>
           </div>
-          
-          <div className="relative flex items-center my-4">
-             <div className="flex-grow border-t border-gray-600"></div>
-             <span className="flex-shrink mx-4 text-gray-400 text-sm">OR</span>
-             <div className="flex-grow border-t border-gray-600"></div>
-           </div>
-
-          {playerName && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-white mb-3">Re-Join Your Lobbies</h2>
-              {myLobbies === undefined && <p className="text-gray-400">Loading your lobbies...</p>}
-              {myLobbies && myLobbies.length === 0 && <p className="text-gray-400">No active lobbies found for {playerName}.</p>}
-              {myLobbies && myLobbies.length > 0 && (
-                <ul className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-3 rounded-lg">
-                  {myLobbies.map((lobby: Doc<"game_lobbies">) => (
-                    <li key={lobby._id} className="flex items-center justify-between bg-gray-800/50 p-2 rounded">
-                      <div>
-                        <span className="text-white font-mono mr-3 bg-indigo-600 px-2 py-0.5 rounded text-sm">{lobby.lobbyId}</span>
-                        <span className="text-gray-300 text-sm">({lobby.players.length}/4 players)</span>
-                      </div>
-                      <button 
-                        onClick={() => handleJoinLobby(lobby.lobbyId)}
-                        disabled={isJoining === lobby.lobbyId || !!isCreating || !!isJoining}
-                        className={`px-3 py-1 rounded text-sm font-semibold flex items-center transition-colors duration-150 ${isJoining === lobby.lobbyId
-                          ? 'bg-gray-600 text-gray-400 cursor-wait' 
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'}
-                        `}
-                      >
-                        {isJoining === lobby.lobbyId ? 'Joining...' : <><LogIn className="w-4 h-4 mr-1"/> Join</>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           )}
+          
+          {/* Re-Join Your Lobbies section removed as it's no longer needed */}
 
           <div className="flex flex-col gap-3">
+            {!isPvP && (
             <button
               onClick={handleCreateLobby}
               disabled={!playerName || !!isJoining || isCreating}
@@ -515,6 +576,17 @@ export default function LobbyPage() {
             >
               {isCreating ? 'Creating...' : <><PlusCircle className="w-5 h-5 mr-2"/> Create New Lobby</>}
             </button>
+            )}
+            
+            {isPvP && (
+              <button
+                onClick={handleFindMatch}
+                disabled={!playerName.trim()}
+                className={`w-full px-4 py-3 rounded-lg font-semibold flex items-center justify-center transition-colors duration-150 ${!playerName.trim() ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-400 to-red-600 text-white hover:from-red-500 hover:to-red-700'}`}
+              >
+                Find Match
+              </button>
+            )}
             
             <button
               onClick={() => navigate('/')}

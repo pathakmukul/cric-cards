@@ -33,6 +33,100 @@ const ALLROUNDER_STATS = [
   { key: 'Sixes', label: 'Sixes', higher: true },
 ];
 
+// Function to determine player type based on stats
+export const determinePlayerType = (card: any): 'batsman' | 'bowler' | 'allrounder' => {
+  // Check if it's primarily a bowler
+  if (
+    (card.Wickets_Taken > 30 || (card.Bowling_Average && card.Bowling_Average < 25) || (card.Economy_Rate && card.Economy_Rate < 7.5)) &&
+    card.Runs_Scored < 1000
+  ) {
+    return 'bowler';
+  }
+  
+  // Check if it's primarily a batsman
+  if (
+    (card.Runs_Scored > 1000 || (card.Batting_Average && card.Batting_Average > 30) || card.Centuries > 1) &&
+    card.Wickets_Taken < 20
+  ) {
+    return 'batsman';
+  }
+  
+  // Otherwise it's an all-rounder
+  return 'allrounder';
+};
+
+// Define ALL possible stats with their properties
+const ALL_STATS = [
+  { key: 'Batting_Average', label: 'Batting Avg', higher: true },
+  { key: 'Batting_Strike_Rate', label: 'Strike Rate', higher: true },
+  { key: 'Runs_Scored', label: 'Runs', higher: true },
+  { key: 'Centuries', label: 'Centuries', higher: true },
+  { key: 'Half_Centuries', label: 'Half Centuries', higher: true },
+  { key: 'Wickets_Taken', label: 'Wickets', higher: true },
+  { key: 'Economy_Rate', label: 'Economy', higher: false },
+  { key: 'Bowling_Average', label: 'Bowling Avg', higher: false },
+  { key: 'Bowling_Strike_Rate', label: 'Bowl SR', higher: false },
+  { key: 'Four_Wicket_Hauls', label: 'Four Wickets', higher: true },
+  { key: 'Five_Wicket_Hauls', label: 'Five Wickets', higher: true },
+  { key: 'Sixes', label: 'Sixes', higher: true },
+  { key: 'Fours', label: 'Fours', higher: true },  // Added Fours stat
+  { key: 'Highest_Score', label: 'Highest Score', higher: true },
+];
+
+// Function to get the appropriate stats for a player type
+export const getStatsForPlayerType = (playerType: 'batsman' | 'bowler' | 'allrounder', selectedStat?: string) => {
+  // If there's a selected stat (during play), make sure all cards show it regardless of player type
+  if (selectedStat) {
+    // Find the stat in our complete list
+    const statInfo = ALL_STATS.find(stat => stat.key === selectedStat);
+    
+    if (statInfo) {
+      // Just show this one stat on all cards
+      return [statInfo];
+    }
+  }
+  
+  // Otherwise show stats based on player type
+  switch (playerType) {
+    case 'batsman': return BATSMAN_STATS;
+    case 'bowler': return BOWLER_STATS;
+    case 'allrounder': return ALLROUNDER_STATS;
+    default: return BATSMAN_STATS;
+  }
+};
+
+// Function to get the best stats for a specific card based on its values
+export const getBestStatsForCard = (card: any): string[] => {
+  const playerType = determinePlayerType(card);
+  const stats = getStatsForPlayerType(playerType);
+  
+  // Sort the stats by the card's values (higher is better or lower is better depending on the stat)
+  return stats
+    .sort((a, b) => {
+      const aValue = parseFloat(card[a.key] as string);
+      const bValue = parseFloat(card[b.key] as string);
+      
+      if (isNaN(aValue) || isNaN(bValue)) return 0;
+      
+      // For stats where higher is better
+      if (a.higher && b.higher) {
+        return bValue - aValue; // Descending for higher=true
+      } 
+      // For stats where lower is better
+      else if (!a.higher && !b.higher) {
+        return aValue - bValue; // Ascending for higher=false
+      }
+      // Mixed comparison - prioritize the stat that is strongest for this card
+      else {
+        const aPercentile = a.higher ? aValue / 100 : 1 - (aValue / 20); // Rough normalization
+        const bPercentile = b.higher ? bValue / 100 : 1 - (bValue / 20);
+        return bPercentile - aPercentile;
+      }
+    })
+    .slice(0, 3) // Get top 3 stats
+    .map(stat => stat.key);
+};
+
 // Helper function to get team color
 function getTeamColor(team) {
   const teamColors = {
@@ -89,11 +183,15 @@ export default function MultiplayerCardHand({
   currentPlayer = '',
   selectedStat = '',
   players = [],
-  playedCards = []
+  playedCards = [],
+  playerHands = {}
 }) {
   const [hoveredCard, setHoveredCard] = useState(null);
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [hoveredStat, setHoveredStat] = useState(null);
+
+  // Log selectedStat prop received by MultiplayerCardHand
+  console.log(`MultiplayerCardHand: Received selectedStat='${selectedStat}', gamePhase='${gamePhase}', isSelectable=${isSelectable}`);
   
   // Log component render for debugging
   useEffect(() => {
@@ -242,7 +340,7 @@ export default function MultiplayerCardHand({
               fontWeight="bold"
               rotation={[0, isCurrentPlayerHand ? 0 : Math.PI, 0] as [number, number, number]}
             >
-              {playerName} {isCurrentPlayerHand ? "(Your Turn)" : ""}
+              {playerName}
             </Text>
             
             {/* Player's cards */}
@@ -257,14 +355,9 @@ export default function MultiplayerCardHand({
                   const handWidth = Math.min(cards.length * (CARD_WIDTH + 0.15), 3.0);
                   const xPos = ((cardIndex / Math.max(cards.length - 1, 1)) - 0.5) * handWidth;
                   
-                  // Prepare stat options for the card
-                  const statOptions = [
-                    { key: 'Batting_Average', label: 'Batting Avg', higher: true },
-                    { key: 'Runs_Scored', label: 'Runs', higher: true },
-                    { key: 'Wickets_Taken', label: 'Wickets', higher: true },
-                    { key: 'Economy_Rate', label: 'Economy', higher: false },
-                    { key: 'Batting_Strike_Rate', label: 'Strike Rate', higher: true }
-                  ];
+                  // Determine player type and get appropriate stats
+                  const playerType = determinePlayerType(card);
+                  const statOptions = getStatsForPlayerType(playerType, selectedStat);
 
                   return (
                     <CardComponent
@@ -285,28 +378,43 @@ export default function MultiplayerCardHand({
                   );
                 })
               ) : (
-                // Opponent cards - face down using shared component
-                [...Array(3)].map((_, cardIndex) => {
-                  const x = ((cardIndex / 2) - 0.5) * 1.5;
+                // Opponent cards - face down showing actual number of cards the player has
+                (() => {
+                  // Get actual card count for this player from playerHands
+                  const playerCardCount = playerName && playerHands[playerName] ? 
+                    playerHands[playerName].length : 0;
                   
-                  // Create a minimal card object for face-down opponent cards
-                  const dummyCard = {
-                    _id: `opponent-${playerName}-${cardIndex}`,
-                    Player_Name: 'Unknown Card',
-                    team: 'Unknown'
-                  };
+                  // If player has no cards, don't render anything
+                  if (playerCardCount === 0) return null;
                   
-                  return (
-                    <CardComponent
-                      key={`opponent-${playerName}-${cardIndex}`}
-                      card={dummyCard}
-                      position={[x, 0, 0]}
-                      rotation={[Math.PI/6, Math.PI, 0] as [number, number, number]}
-                      isFaceDown={true}
-                    />
-                  );
-                })
-              )}
+                  // Calculate positions dynamically based on number of cards
+                  return [...Array(playerCardCount)].map((_, cardIndex) => {
+                    // Adjust spacing based on the number of cards
+                    const spreadFactor = playerCardCount <= 1 ? 0 : 1.5 / (playerCardCount - 1);
+                    const x = playerCardCount === 1 ? 
+                      0 : // Center single card
+                      ((cardIndex * spreadFactor) - ((playerCardCount - 1) * spreadFactor / 2));
+                    
+                    // Create a minimal card object for face-down opponent cards
+                    const dummyCard = {
+                      _id: `opponent-${playerName}-${cardIndex}`,
+                      Player_Name: 'Unknown Card',
+                      team: 'Unknown'
+                    };
+                    
+                    return (
+                      <CardComponent
+                        key={`opponent-${playerName}-${cardIndex}`}
+                        card={dummyCard}
+                        position={[x, 0, 0]}
+                        rotation={[Math.PI/6, Math.PI, 0] as [number, number, number]}
+                        isFaceDown={true}
+                      />
+                    );
+                  });
+                })()
+              )
+            }
             </group>
           </group>
         );

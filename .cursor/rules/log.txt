@@ -1,0 +1,289 @@
+{playerName: 'heyayaya', currentPlayer: undefined, isMyTurn: false, gamePhase: undefined, selectedStat: null, …}
+MultiplayerGameBoard.tsx:255 [Debug] gameOver variable: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+chunk-IKNHMZRX.js?v=86f7dfed:17391 [Violation] 'requestAnimationFrame' handler took 51ms
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 4 cards: (4) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j57ctpg45yx076e8grsym3a6kh7cfzmd', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 4 cards: (4) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j57ctpg45yx076e8grsym3a6kh7cfzmd', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:236 [Debug] Lobby updated. Game phase: card_selection
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'heyayaya', isMyTurn: true, gamePhase: 'card_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'heyayaya', isMyTurn: true, gamePhase: 'card_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 8 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 5 format 1
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 1
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 4, gamePhase: 'card_selection', isSelectable: true}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 8 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 5 format 1
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 1
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 8 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:514 unsupported GPOS table LookupType 5 format 1
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 2
+1e2bb319-5885-4aea-bdbc-924cae746b8f:602 unsupported GSUB table LookupType 6 format 1
+chunk-IKNHMZRX.js?v=86f7dfed:17391 [Violation] 'requestAnimationFrame' handler took 74ms
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+CardComponent.tsx:128 🔴 CardComponent onClick for: j57ctpg45yx076e8grsym3a6kh7cfzmd
+MultiplayerGameBoard.tsx:317 🔵 handleCardSelection fired for: j57ctpg45yx076e8grsym3a6kh7cfzmd
+MultiplayerGameBoard.tsx:325 Card selection validation passed {cardId: 'j57ctpg45yx076e8grsym3a6kh7cfzmd', gamePhase: 'card_selection', selectedStat: null}
+MultiplayerGameBoard.tsx:328 [UI] Playing Card: j57ctpg45yx076e8grsym3a6kh7cfzmd with Booster: null
+MultiplayerGameBoard.tsx:343 Making move with data: {lobbyId: 'W5SBN', playerName: 'heyayaya', action: 'play_card', selectedCardId: 'j57ctpg45yx076e8grsym3a6kh7cfzmd'}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 3}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+5chunk-MH2TQOOP.js?v=86f7dfed:5781 THREE.Color: Invalid hex color #00000000
+setStyle @ chunk-MH2TQOOP.js?v=86f7dfed:5781
+set @ chunk-MH2TQOOP.js?v=86f7dfed:5675
+applyProps$1 @ chunk-IKNHMZRX.js?v=86f7dfed:16752
+createInstance @ chunk-IKNHMZRX.js?v=86f7dfed:16222
+completeWork @ chunk-IKNHMZRX.js?v=86f7dfed:8414
+completeUnitOfWork @ chunk-IKNHMZRX.js?v=86f7dfed:13690
+performUnitOfWork @ chunk-IKNHMZRX.js?v=86f7dfed:13672
+workLoopSync @ chunk-IKNHMZRX.js?v=86f7dfed:13604
+renderRootSync @ chunk-IKNHMZRX.js?v=86f7dfed:13583
+performSyncWorkOnRoot @ chunk-IKNHMZRX.js?v=86f7dfed:13311
+flushSyncCallbacks @ chunk-IKNHMZRX.js?v=86f7dfed:2766
+workLoop @ chunk-IKNHMZRX.js?v=86f7dfed:274
+flushWork @ chunk-IKNHMZRX.js?v=86f7dfed:253
+performWorkUntilDeadline @ chunk-IKNHMZRX.js?v=86f7dfed:461Understand this warning
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Player heyayaya played card j57ctpg45yx076e8grsym3a6kh7cfzmd. Next turn: male'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Hand ended. Stat: Batting_Average'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Hand winner: Bot 4 with card Matthew Wade (11.52)'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Checking for game over. Current playerHands state:' '{"Bot 3":["j5735gjagqze1hcgh551q9bzbh7cep4h","j575s0v7na6xj1a0fwacedtxad7cfm43","j574zgzrth8z4z41de7ca4cfk57cg2hw"],"Bot 4":["j57cxn2q6wzfshk2hws7546tsx7cfwnd","j57677jbqqbd39nweazw169a2h7chkse","j5799n97dcq389vcf04n1ckdhs7cgrvx"],"heyayaya":["j579z59sdrbz74hm6e6v2egv697cf5zc","j579e2c471j4serr05v6h651eh7ceqve","j572qc7sffxrcbncjbnsxswpbn7cf4x1"],"male":["j57ejwv43dxecc7fa797wjy8xd7cfvat","j57bwkxcgh8wq12bzpr2kb63an7cfdp5","j57aqxra0rts401248en1zemts7cfh9r"]}'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] isGameOver flag after check (all players empty?): false'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Starting Hand 3. Player Bot 4 selects stat.'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Patched lobby W5SBN with updates:' {
+  lastMoveTime: 1745387773592,
+  playerHands: {
+    'Bot 3': [ 'j5735gjagqze1hcgh551q9bzbh7cep4h', 'j575s0v7na6xj1a0fwacedtxad7cfm43', 'j574zgzrth8z4z41de7ca4cfk57cg2hw' ],
+    'Bot 4': [ 'j57cxn2q6wzfshk2hws7546tsx7cfwnd', 'j57677jbqqbd39nweazw169a2h7chkse', 'j5799n97dcq389vcf04n1ckdhs7cgrvx' ],
+    heyayaya: [ 'j579z59sdrbz74hm6e6v2egv697cf5zc', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1' ],
+    male: [ 'j57ejwv43dxecc7fa797wjy8xd7cfvat', 'j57bwkxcgh8wq12bzpr2kb63an7cfdp5', 'j57aqxra0rts401248en1zemts7cfh9r' ]
+  },
+  currentHand: undefined,
+  currentPlayer: 'Bot 4',
+  playerScores: {
+    'Bot 3': 0,
+    'Bot 4': 1,
+    heyayaya: 0,
+    male: 1
+  },
+  completedHands: [
+    {
+      playedCards: [
+        {
+          cardId: 'j5735j560s7t7654gcrkjhc05d7cf985',
+          cardName: 'Fazalhaq Farooqi',
+          finalValue: 0,
+          playerId: 'heyayaya',
+          rawValue: 0
+        },
+        {
+          cardId: 'j57bfgcqxavazs3tqwx827e2rd7cfk2v',
+          cardName: 'Dushmantha Chameera',
+          finalValue: 10.75,
+          playerId: 'male',
+          rawValue: 10.75
+        },
+        {
+          cardId: 'j5759sms3069wby5n0nxs738pn7chsmh',
+          cardName: 'Himmat Singh',
+          finalValue: 0,
+          playerId: 'Bot 3',
+          rawValue: 0
+        },
+        {
+          cardId: 'j571w7n8f521mn7bv1cgza392d7cgmt2',
+          cardName: 'Sai Sudharsan',
+          finalValue: 0,
+          playerId: 'Bot 4',
+          rawValue: 0
+        }
+      ],
+      selectedStat: 'Batting_Average',
+      statSelector: 'heyayaya',
+      winner: {
+        cardId: 'j57bfgcqxavazs3tqwx827e2rd7cfk2v',
+        cardName: 'Dushmantha Chameera',
+        finalValue: 10.75,
+        playerId: 'male'
+      }
+    },
+    {
+      statSelector: 'male',
+      selectedStat: 'Batting_Average',
+      playedCards: [
+        {
+          cardId: 'j573kc3arqbsb1h2wr602r9qys7cf8c6',
+          cardName: 'Kagiso Rabada',
+          finalValue: 8.51,
+          playerId: 'male',
+          rawValue: 8.51
+        },
+        {
+          cardId: 'j578n775cp900zk84jvdv6gf397cenke',
+          cardName: 'Akash Madhwal',
+          finalValue: 0,
+          playerId: 'Bot 3',
+          rawValue: 0
+        },
+        {
+          cardId: 'j57e8bhtz5hjv40kr064c6wk7x7cetzc',
+          cardName: 'Matthew Wade',
+          finalValue: 11.52,
+          playerId: 'Bot 4',
+          rawValue: 11.52
+        },
+        {
+          playerId: 'heyayaya',
+          cardId: 'j57ctpg45yx076e8grsym3a6kh7cfzmd',
+          cardName: 'Saurav Chuahan',
+          boosterUsed: undefined,
+          rawValue: 0,
+          finalValue: 0
+        }
+      ],
+      winner: {
+        playerId: 'Bot 4',
+        cardId: 'j57e8bhtz5hjv40kr064c6wk7x7cetzc',
+        cardName: 'Matthew Wade',
+        finalValue: 11.52
+      }
+    }
+  ],
+  selectedStat: undefined,
+  gamePhase: 'stat_selection'
+}
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Scheduling bot move for Bot 4'
+MultiplayerGameBoard.tsx:346 Card played: j57ctpg45yx076e8grsym3a6kh7cfzmd
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 3 cards: (3) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 3 cards: (3) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:236 [Debug] Lobby updated. Game phase: stat_selection
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'Bot 4', isMyTurn: false, gamePhase: 'stat_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='stat_selection', isSelectable=false
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 4, gamePhase: 'stat_selection', isSelectable: false}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'Bot 4', isMyTurn: false, gamePhase: 'stat_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: false, selectedStat: undefined, numCards: 0}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='stat_selection', isSelectable=false
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 3, gamePhase: 'stat_selection', isSelectable: false}
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 3 cards: (3) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 1}
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 3 cards: (3) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j579e2c471j4serr05v6h651eh7ceqve', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 1}
+MultiplayerGameBoard.tsx:236 [Debug] Lobby updated. Game phase: card_selection
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'heyayaya', isMyTurn: true, gamePhase: 'card_selection', selectedStat: null, …}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 3, gamePhase: 'card_selection', isSelectable: true}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+CardComponent.tsx:128 🔴 CardComponent onClick for: j579e2c471j4serr05v6h651eh7ceqve
+MultiplayerGameBoard.tsx:317 🔵 handleCardSelection fired for: j579e2c471j4serr05v6h651eh7ceqve
+MultiplayerGameBoard.tsx:325 Card selection validation passed {cardId: 'j579e2c471j4serr05v6h651eh7ceqve', gamePhase: 'card_selection', selectedStat: null}
+MultiplayerGameBoard.tsx:328 [UI] Playing Card: j579e2c471j4serr05v6h651eh7ceqve with Booster: null
+MultiplayerGameBoard.tsx:343 Making move with data: {lobbyId: 'W5SBN', playerName: 'heyayaya', action: 'play_card', selectedCardId: 'j579e2c471j4serr05v6h651eh7ceqve'}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 1}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 1}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=true
+5chunk-MH2TQOOP.js?v=86f7dfed:5781 THREE.Color: Invalid hex color #00000000
+setStyle @ chunk-MH2TQOOP.js?v=86f7dfed:5781
+set @ chunk-MH2TQOOP.js?v=86f7dfed:5675
+applyProps$1 @ chunk-IKNHMZRX.js?v=86f7dfed:16752
+createInstance @ chunk-IKNHMZRX.js?v=86f7dfed:16222
+completeWork @ chunk-IKNHMZRX.js?v=86f7dfed:8414
+completeUnitOfWork @ chunk-IKNHMZRX.js?v=86f7dfed:13690
+performUnitOfWork @ chunk-IKNHMZRX.js?v=86f7dfed:13672
+workLoopSync @ chunk-IKNHMZRX.js?v=86f7dfed:13604
+renderRootSync @ chunk-IKNHMZRX.js?v=86f7dfed:13583
+performSyncWorkOnRoot @ chunk-IKNHMZRX.js?v=86f7dfed:13311
+flushSyncCallbacks @ chunk-IKNHMZRX.js?v=86f7dfed:2766
+workLoop @ chunk-IKNHMZRX.js?v=86f7dfed:274
+flushWork @ chunk-IKNHMZRX.js?v=86f7dfed:253
+performWorkUntilDeadline @ chunk-IKNHMZRX.js?v=86f7dfed:461Understand this warning
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Player heyayaya played card j579e2c471j4serr05v6h651eh7ceqve. Next turn: male'
+convex_react.js?v=86f7dfed:96 [CONVEX M(multiplayer:makeMove)] [LOG] '[makeMove] Patched lobby W5SBN with updates:' {
+  lastMoveTime: 1745388166250,
+  playerHands: {
+    'Bot 3': [ 'j5735gjagqze1hcgh551q9bzbh7cep4h', 'j575s0v7na6xj1a0fwacedtxad7cfm43', 'j574zgzrth8z4z41de7ca4cfk57cg2hw' ],
+    'Bot 4': [ 'j57677jbqqbd39nweazw169a2h7chkse', 'j5799n97dcq389vcf04n1ckdhs7cgrvx' ],
+    heyayaya: [ 'j579z59sdrbz74hm6e6v2egv697cf5zc', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1' ],
+    male: [ 'j57ejwv43dxecc7fa797wjy8xd7cfvat', 'j57bwkxcgh8wq12bzpr2kb63an7cfdp5', 'j57aqxra0rts401248en1zemts7cfh9r' ]
+  },
+  currentHand: {
+    playedCards: [
+      {
+        cardId: 'j57cxn2q6wzfshk2hws7546tsx7cfwnd',
+        cardName: 'Shubman Gill',
+        finalValue: 2821,
+        playerId: 'Bot 4',
+        rawValue: 2821
+      },
+      {
+        playerId: 'heyayaya',
+        cardId: 'j579e2c471j4serr05v6h651eh7ceqve',
+        cardName: 'Harpreet Bhatia',
+        boosterUsed: undefined,
+        rawValue: 96,
+        finalValue: 96
+      }
+    ],
+    statSelector: 'Runs_Scored',
+    leadingCard: {
+      playerId: 'heyayaya',
+      cardId: 'j579e2c471j4serr05v6h651eh7ceqve',
+      cardName: 'Harpreet Bhatia',
+      finalValue: 96
+    }
+  },
+  currentPlayer: 'male',
+  gamePhase: 'card_selection'
+}
+MultiplayerGameBoard.tsx:346 Card played: j579e2c471j4serr05v6h651eh7ceqve
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 2 cards: (2) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:185 [Player Cards] heyayaya has 2 cards: (2) ['j579z59sdrbz74hm6e6v2egv697cf5zc', 'j572qc7sffxrcbncjbnsxswpbn7cf4x1']
+MultiplayerGameBoard.tsx:371 [Debug] Calculating finalWinner. gameOver: false
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=false
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 3, gamePhase: 'card_selection', isSelectable: false}
+MultiplayerGameBoard.tsx:236 [Debug] Lobby updated. Game phase: card_selection
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'male', isMyTurn: false, gamePhase: 'card_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:242 Game State Update: {playerName: 'heyayaya', currentPlayer: 'male', isMyTurn: false, gamePhase: 'card_selection', selectedStat: null, …}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerGameBoard.tsx:782 Debug Played Cards: {hasCards: true, selectedStat: undefined, numCards: 2}
+MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=false
+MultiplayerCardHand.tsx:103 MultiplayerCardHand rendering: {player: 'heyayaya', cardsCount: 2, gamePhase: 'card_selection', isSelectable: false}
+3MultiplayerCardHand.tsx:99 MultiplayerCardHand: Received selectedStat='', gamePhase='card_selection', isSelectable=false

@@ -18,6 +18,7 @@ function App() {
         <Route path="/game" element={<GameBoard />} />
         <Route path="/multiplayer" element={<MultiplayerGameBoard />} />
         <Route path="/team-decorations" element={<TeamDecorationShowcase />} />
+        <Route path="/pvp" element={<LobbyPage isPvP />} />
       </Routes>
     </ConvexProvider>
   );

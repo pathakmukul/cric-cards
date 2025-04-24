@@ -49,6 +49,13 @@ export default function LandingPage() {
             Multiplayer
           </button>
           <button
+            onClick={() => navigate('/pvp')}
+            className="px-8 py-4 bg-gradient-to-r from-red-400 to-red-600 text-white font-bold rounded-lg text-xl 
+                    transform transition hover:scale-105 hover:shadow-xl"
+          >
+            PvP
+          </button>
+          <button
             onClick={() => navigate('/team-decorations')}
             className="px-8 py-4 bg-gradient-to-r from-blue-400 to-indigo-500 text-white font-bold rounded-lg text-xl 
                     transform transition hover:scale-105 hover:shadow-xl"

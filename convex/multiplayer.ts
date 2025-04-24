@@ -279,6 +279,83 @@ export const getMyLobbies = query({
   },
 });
 
+export const resetGame = mutation({
+  args: {
+    lobbyId: v.string(),
+    playerName: v.string(), // Host resetting the game
+    orangeCapPlayer: v.optional(v.string()),
+    purpleCapPlayer: v.optional(v.string()),
+    teamRankings: v.any(), // Use v.any() as defined in schema
+    availableCards: v.array(v.id("iplstats")), // Array of Card IDs
+  },
+  handler: async (ctx, args) => {
+    const lobby = await ctx.db
+      .query("game_lobbies")
+      .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
+      .first();
+    
+    if (!lobby) throw new Error(`Lobby ${args.lobbyId} not found`);
+    if (lobby.hostPlayerName !== args.playerName) throw new Error("Only the host can reset the game");
+    if (lobby.gamePhase !== "game_over") throw new Error("Can only reset a game that has ended");
+    
+    // --- Prepare Game Setup ---
+    let updatedPlayers = [...lobby.players];
+    let initialPlayerScores: Record<string, number> = {};
+    let initialPlayerBoosters: Record<string, { orange: boolean, purple: boolean, teamrank: boolean }> = {};
+    
+    // Reset all player scores and boosters
+    updatedPlayers.forEach(player => {
+      initialPlayerScores[player] = 0;
+      initialPlayerBoosters[player] = { orange: true, purple: true, teamrank: true };
+    });
+    
+    // Fill remaining slots with bots if needed
+    while (updatedPlayers.length < 4) {
+      const botName = `Bot ${updatedPlayers.length + 1}`;
+      updatedPlayers.push(botName);
+      initialPlayerScores[botName] = 0;
+      initialPlayerBoosters[botName] = { orange: true, purple: true, teamrank: true };
+    }
+    
+    // --- Deal Cards ---
+    const cardsPerPlayer = 5;
+    const requiredCards = updatedPlayers.length * cardsPerPlayer;
+    if (args.availableCards.length < requiredCards) {
+      throw new Error(`Not enough unique cards available to deal ${cardsPerPlayer} to ${updatedPlayers.length} players.`);
+    }
+
+    const shuffledCardIds = shuffleArray(args.availableCards);
+    const playerHands: Record<string, string[]> = {};
+    updatedPlayers.forEach((player, index) => {
+      const startIndex = index * cardsPerPlayer;
+      const hand = shuffledCardIds.slice(startIndex, startIndex + cardsPerPlayer);
+      playerHands[player] = hand;
+    });
+    
+    // --- Update Lobby State for Game Restart ---
+    await ctx.db.patch(lobby._id, {
+      players: updatedPlayers,
+      playerScores: initialPlayerScores,
+      playerBoosters: initialPlayerBoosters,
+      playerHands: playerHands,
+      gameStarted: true,
+      status: "in_progress",
+      currentPlayer: updatedPlayers[0], // First player starts
+      gamePhase: "stat_selection",
+      completedHands: [], // Reset completed hands
+      currentHand: undefined, // Reset current hand
+      selectedStat: undefined, // Reset selected stat
+      orangeCapPlayer: args.orangeCapPlayer,
+      purpleCapPlayer: args.purpleCapPlayer,
+      teamRankings: args.teamRankings as Record<string, number>,
+      lastMoveTime: Date.now(),
+    });
+    
+    console.log(`Game reset in lobby ${args.lobbyId} by ${args.playerName}`);
+    return { success: true };
+  },
+});
+
 export const startGame = mutation({
   args: {
     lobbyId: v.string(),
@@ -872,4 +949,107 @@ export const checkBotMoves = mutation({
 
         return true; // Indicate check completed
     } // Closing brace for the handler function
+});
+
+export const findOrJoinPvPLobby = mutation({
+  args: { playerName: v.string() },
+  handler: async (ctx, args) => {
+    // First clean up old/zombie lobbies - older than 1 hour
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const oldLobbies = await ctx.db.query("game_lobbies")
+      .filter(q => q.lt(q.field("lastMoveTime"), oneHourAgo))
+      .collect();
+    
+    for (const oldLobby of oldLobbies) {
+      // Handle undefined lastMoveTime safely
+      const timestamp = oldLobby.lastMoveTime || Date.now();
+      console.log(`Cleaning up old lobby ${oldLobby.lobbyId} from ${new Date(timestamp).toISOString()}`);
+      await ctx.db.delete(oldLobby._id);
+    }
+
+    // Check if player is already in a PvP lobby
+    const lobbiesResult = await ctx.db.query("game_lobbies")
+      .filter(q => q.eq(q.field("isArenaMode"), true))
+      .filter(q => q.eq(q.field("status"), "waiting"))
+      .collect();
+      
+    // Now filter for player's existing lobbies
+    const existingPlayerLobbies = lobbiesResult.filter(lobby => 
+      Array.isArray(lobby.players) && lobby.players.includes(args.playerName)
+    );
+      
+    if (existingPlayerLobbies.length > 0) {
+      // Player is already in a lobby - return that one
+      return { 
+        lobbyId: existingPlayerLobbies[0].lobbyId, 
+        id: existingPlayerLobbies[0]._id 
+      };
+    }
+    
+    // Search for a waiting PvP lobby with space
+    const allWaitingLobbies = await ctx.db.query("game_lobbies")
+      .filter(q => q.eq(q.field("isArenaMode"), true))
+      .filter(q => q.eq(q.field("status"), "waiting"))
+      .collect();
+      
+    // Find lobbies with space and sort by most players first
+    const availableLobbies = allWaitingLobbies
+      .filter(lobby => Array.isArray(lobby.players) && lobby.players.length < 4)
+      .sort((a, b) => (b.players?.length || 0) - (a.players?.length || 0));
+      
+    // Join any available lobby that isn't full
+    if (availableLobbies.length > 0) {
+      const lobby = availableLobbies[0];
+      const updatedPlayers = [...lobby.players, args.playerName];
+      const playerScores = { ...(lobby.playerScores ?? {}), [args.playerName]: 0 };
+      const playerBoosters = { ...(lobby.playerBoosters ?? {}), [args.playerName]: { orange: true, purple: true, teamrank: true } };
+      
+      await ctx.db.patch(lobby._id, { 
+        players: updatedPlayers, 
+        playerScores, 
+        playerBoosters, 
+        lastMoveTime: Date.now() 
+      });
+      
+      return { lobbyId: lobby.lobbyId, id: lobby._id };
+    }
+    
+    // Create new PvP lobby if none available
+    const newId = await ctx.db.insert("game_lobbies", {
+      lobbyId: Math.random().toString(36).substring(2, 7).toUpperCase(),
+      isArenaMode: true,
+      players: [args.playerName],
+      hostPlayerName: args.playerName,
+      status: "waiting",
+      gameStarted: false,
+      createdAt: Date.now(),
+      lastMoveTime: Date.now(),
+      currentPlayer: undefined,
+      gamePhase: undefined,
+      playerHands: undefined,
+      selectedStat: undefined,
+      currentHand: undefined,
+      completedHands: [],
+      playerScores: { [args.playerName]: 0 },
+      playerBoosters: { [args.playerName]: { orange: true, purple: true, teamrank: true } },
+      orangeCapPlayer: undefined,
+      purpleCapPlayer: undefined,
+      teamRankings: undefined,
+    });
+    
+    const doc = await ctx.db.get(newId);
+    return { lobbyId: doc!.lobbyId, id: newId };
+  }
+});
+
+export const clearGameLobbies = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const lobbies = await ctx.db.query("game_lobbies").collect();
+    for (const lobby of lobbies) {
+      await ctx.db.delete(lobby._id);
+    }
+    console.log(`Cleared ${lobbies.length} game_lobbies`);
+    return { cleared: lobbies.length };
+  }
 });

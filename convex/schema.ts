@@ -84,6 +84,8 @@ export default defineSchema({
   game_lobbies: defineTable({
     lobbyId: v.string(),
     players: v.array(v.string()),
+    isArenaMode: v.optional(v.boolean()), // or v.boolean() if always present
+
     hostPlayerName: v.string(),
     status: v.union(
       v.literal("waiting"),

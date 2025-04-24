@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Text } from '@react-three/drei';
+import { Text, useTexture } from '@react-three/drei';
 import { getTeamDecoration } from '../decorations/TeamDecorations';
+import * as THREE from 'three';
+import { useRef } from 'react';
 
 // Constants
 const CARD_WIDTH = 0.7;
@@ -109,8 +111,10 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   
   // Check if we should show stats (front of card, and relevant game phases)
   const shouldShowStats = !isFaceDown && (
-    (isActivePlayer && gamePhase === 'stat_selection') ||
-    (isActivePlayer && gamePhase === 'card_selection')
+    // Always show stats in these game phases, whether active player or not
+    (gamePhase === 'stat_selection' || gamePhase === 'card_selection') ||
+    // For other phases, only show if active
+    isActivePlayer
   );
   
   // Check if we're in card selection mode and a stat has already been chosen
@@ -154,46 +158,10 @@ export const CardComponent: React.FC<CardComponentProps> = ({
         {/* Team-specific decorative elements - directly on the team color background */}
         {!isFaceDown && getTeamDecoration(card.team, teamColorLight)}
 
-        {/* Card back design */}
+        {/* Card back design - using image */}
         {isFaceDown && (
           <group position={[0, 0, 0.06]}>
-            {/* Logo background */}
-            <mesh position={[0, 0, 0]} scale={[0.4, 0.4, 0.01]} rotation={[0, 0, Math.PI / 4]}>
-              <planeGeometry />
-              <meshBasicMaterial color="#0f2465" opacity={0.7} transparent />
-            </mesh>
-            
-            {/* IPL Logo */}
-            <mesh position={[0, 0, 0.001]} scale={[0.35, 0.35, 0.01]}>
-              <planeGeometry />
-              <meshBasicMaterial color="#ffffff" />
-            </mesh>
-            
-            <Text
-              position={[0, 0, 0.01]}
-              fontSize={0.12}
-              color="#ff9933"
-              anchorX="center"
-              anchorY="middle"
-            >
-              IPL
-            </Text>
-            
-            {/* Decorative elements */}
-            {[...Array(8)].map((_, i) => (
-              <mesh 
-                key={i} 
-                position={[
-                  Math.sin((i * Math.PI) / 4) * 0.3,
-                  Math.cos((i * Math.PI) / 4) * 0.3,
-                  0
-                ]}
-                scale={[0.05, 0.05, 0.01]}
-              >
-                <circleGeometry />
-                <meshBasicMaterial color="#ff9933" opacity={0.7} transparent />
-              </mesh>
-            ))}
+            <CardBackWithTexture />
           </group>
         )}
         
@@ -253,9 +221,13 @@ export const CardComponent: React.FC<CardComponentProps> = ({
         {shouldShowStats && (
           <group position={[0, 0, 0.06]}>
             {statOptions.map((stat, idx) => {
-              if ((isCardSelectionWithStatChosen && idx >= 1) || (!isCardSelectionWithStatChosen && idx >= 5)) return null;
+              // Always show all stats after a player has played their card
+              // If a player is in card selection mode and hasn't played yet, still show all stats
+              // Only limit to first 5 stats when in stat_selection phase to avoid cluttering
+              if (!isCardSelectionWithStatChosen && gamePhase === 'stat_selection' && idx >= 5) return null;
               
-              const yPos = 0.15 - idx * 0.12;
+              // Increased vertical spacing between stats from 0.12 to 0.15
+              const yPos = 0.15 - idx * 0.15;
               const canSelectStat = isActivePlayer && (
                 (gamePhase === 'stat_selection') ||
                 (gamePhase === 'card_selection' && isSelected)
@@ -263,20 +235,33 @@ export const CardComponent: React.FC<CardComponentProps> = ({
               const isStatSelected = selectedStat === stat.key;
               const isStatHovered = hoveredStat === stat.key;
               
-              // Modern color scheme
+              // Calculate luminance manually instead of using getLuminance()
+              // Convert hex color to RGB first
+              const hex = teamColor.replace('#', '');
+              const r = parseInt(hex.substring(0, 2), 16) / 255;
+              const g = parseInt(hex.substring(2, 4), 16) / 255;
+              const b = parseInt(hex.substring(4, 6), 16) / 255;
+              
+              // Calculate luminance (perceived brightness)
+              // Using the formula: 0.299*R + 0.587*G + 0.114*B
+              const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+              
+              // Modern color scheme with better readability
               const bgColor = isStatSelected 
-                ? "#4ade80" // Selected color
+                ? "#4ade80" // Selected color - darker blue instead of green for better contrast
                 : (activeBooster === 'orange' ? "#f97316" 
                    : activeBooster === 'purple' ? "#a855f7"
                    : activeBooster === 'teamrank' ? "#0ea5e9"
                    : (canSelectStat 
-                      ? teamColor // Use the regular team color instead of dark version
+                      ? darkenColor(teamColor, 0.3) // Slightly darker team color for better contrast
                       : card.team === 'CSK' 
                         ? '#FFCC00' // Brighter gold for CSK
-                        : teamColor)); // Use regular team color for all states
+                        : darkenColor(teamColor, 0.2))); // Slightly darker for better contrast
               
-              const textColor = isStatSelected ? "#000000" : "#ffffff";
-              const valueColor = isStatSelected ? "#000000" : "#ffcc00";
+              // Set text color based on background luminance
+              const textColor = isStatSelected ? "#ffffff" : (luminance > 0.55 ? "#000000" : "#ffffff");
+              // Value is always bright and contrasting
+              const valueColor = isStatSelected ? "#ffffff" : (luminance > 0.55 ? "#000088" : "#ffcc00");
               
               return (
                 <group key={stat.key} position={[0, yPos, 0]}>
@@ -301,17 +286,17 @@ export const CardComponent: React.FC<CardComponentProps> = ({
                     </mesh>
                   )}
                   
-                  {/* Stat background */}
-                  <mesh position={[0, 0, 0]} scale={[CARD_WIDTH * 0.8, 0.08, 0.01]}>
+                  {/* Stat background - made wider and taller to accommodate larger font */}
+                  <mesh position={[0, 0, 0]} scale={[CARD_WIDTH * 0.9, 0.11, 0.01]}>
                     <planeGeometry />
                     <meshBasicMaterial color={bgColor} opacity={0.9} transparent />
                   </mesh>
                   
-                  {/* Stat label */}
+                  {/* Stat label - increased fontSize and adjusted position */}
                   <Text
-                    position={[-0.25, 0, 0.003]}
-                    fontSize={0.045}
-                    color={textColor}
+                    position={[-0.3, 0, 0.003]} // Moved further left to create more space
+                    fontSize={0.055} 
+                    color={stat.key === selectedStat ? "#0c4a6e" : textColor} // Highlight if selected
                     anchorX="left"
                     anchorY="middle"
                     fontWeight="bold"
@@ -319,11 +304,11 @@ export const CardComponent: React.FC<CardComponentProps> = ({
                     {stat.label}:
                   </Text>
                   
-                  {/* Stat value */}
+                  {/* Stat value - increased fontSize to match label */}
                   <Text
-                    position={[CARD_WIDTH * 0.3, 0, 0.01]}
-                    fontSize={0.04}
-                    color={valueColor}
+                    position={[CARD_WIDTH * 0.35, 0, 0.01]} // Moved further right to create more space
+                    fontSize={0.055} 
+                    color={stat.key === selectedStat ? "#0c4a6e" : valueColor} // Highlight if selected
                     anchorX="right"
                     anchorY="middle"
                     fontWeight="bold"
@@ -339,5 +324,20 @@ export const CardComponent: React.FC<CardComponentProps> = ({
     </group>
   );
 };
+
+// Component to handle texture loading for card back
+function CardBackWithTexture() {
+  // Load the texture
+  const texture = useTexture('/assets/cardback.png');
+  
+  return (
+    <mesh position={[0, 0, 0]}>
+      <planeGeometry args={[CARD_WIDTH, CARD_HEIGHT]} />
+      <meshBasicMaterial 
+        map={texture}
+      />
+    </mesh>
+  );
+}
 
 export default CardComponent;
