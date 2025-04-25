@@ -1,9 +1,8 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { DatabaseReader, DatabaseWriter } from "./_generated/server";
 import { api } from "./_generated/api";
-import { Scheduler } from "convex/server"; // Correct import path for Scheduler
 
 // --- Type Definitions (Derived from Schema) ---
 // Using types derived from schema is generally safer
@@ -222,6 +221,14 @@ export const joinLobby = mutation({
       .first();
     
     if (!lobby) throw new Error(`Lobby ${args.lobbyId} not found`);
+    
+    // Check if lobby is expired
+    if (isLobbyExpired(lobby)) {
+      // Optionally delete the expired lobby
+      await ctx.db.delete(lobby._id);
+      throw new Error("Lobby has expired. Please create or join a new lobby.");
+    }
+    
     if (lobby.gameStarted) throw new Error("Game already started");
     if (lobby.players.length >= 4) throw new Error("Lobby is full");
     if (lobby.players.includes(args.playerName)) return { success: true, lobbyId: args.lobbyId }; // Already joined
@@ -255,7 +262,14 @@ export const getLobbyData = query({
       .query("game_lobbies")
       .withIndex("by_lobbyId", q => q.eq("lobbyId", args.lobbyId))
       .first();
-    return lobby; // Return the full lobby doc or null
+      
+    // Check if lobby is expired
+    if (isLobbyExpired(lobby)) {
+      // Don't return expired lobbies
+      return null;
+    }
+      
+    return lobby;
   },
 });
 
@@ -372,6 +386,14 @@ export const startGame = mutation({
       .first();
     
     if (!lobby) throw new Error(`Lobby ${args.lobbyId} not found`);
+    
+    // Check if lobby is expired
+    if (isLobbyExpired(lobby)) {
+      // Optionally delete the expired lobby
+      await ctx.db.delete(lobby._id);
+      throw new Error("Lobby has expired. Please create or join a new lobby.");
+    }
+    
     if (lobby.gameStarted) throw new Error("Game already started");
     if (lobby.hostPlayerName !== args.playerName) throw new Error("Only the host can start the game");
     if (lobby.players.length < 2) throw new Error("Need at least 2 players to start");
@@ -1053,3 +1075,14 @@ export const clearGameLobbies = mutation({
     return { cleared: lobbies.length };
   }
 });
+
+// Helper function to check if a lobby is expired
+const isLobbyExpired = (lobby: any): boolean => {
+  if (!lobby) return true;
+  
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const lastActivity = lobby.lastMoveTime || lobby.createdAt;
+  
+  // All lobbies expire after 5 minutes of inactivity
+  return Date.now() > lastActivity + FIVE_MINUTES;
+};

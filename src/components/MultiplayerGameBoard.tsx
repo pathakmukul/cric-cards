@@ -179,6 +179,22 @@ export default function MultiplayerGameBoard() {
   const lobbyData = useQuery(api.multiplayer.getLobbyData, lobbyId ? { lobbyId } : "skip");
   const makeMove = useMutation(api.multiplayer.makeMove);
   // checkBotMoves is triggered by the backend scheduler via makeMove, no need to call from frontend
+  
+  // Check if lobby is expired (client-side check)
+  useEffect(() => {
+    if (lobbyData) {
+      const FIVE_MINUTES = 5 * 60 * 1000;
+      const lastActivity = lobbyData.lastMoveTime || lobbyData.createdAt;
+      const isExpired = Date.now() > lastActivity + FIVE_MINUTES;
+      
+      if (isExpired) {
+        setError("This lobby has expired. Returning to home page...");
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      }
+    }
+  }, [lobbyData, navigate]);
 
   // Get current player's hand IDs from lobbyData
   const userCardIds = useMemo(() => {
@@ -262,7 +278,96 @@ export default function MultiplayerGameBoard() {
   // Track if an auto-play is in progress to prevent duplicate actions
   const autoPlayInProgressRef = useRef(false);
   
-  // Timer logic for player turns
+  // Track turn start time for host monitoring
+  const turnStartTimeRef = useRef<number>(0);
+  
+  // Host monitoring for disconnected players
+  useEffect(() => {
+    // Only the host monitors other players' turns
+    const isHost = lobbyData?.hostPlayerName === playerName;
+    const isGameActive = lobbyData?.status === 'in_progress';
+    const currentTurnPlayer = lobbyData?.currentPlayer;
+    
+    // Skip if not host, or if it's host's turn, or if game is not active
+    if (!isHost || currentTurnPlayer === playerName || !isGameActive) {
+      return;
+    }
+    
+    // Skip if it's a bot's turn (bots are handled separately)
+    if (currentTurnPlayer?.startsWith('Bot ')) {
+      return;
+    }
+    
+    // Record when this turn started
+    turnStartTimeRef.current = Date.now();
+    
+    // Set up monitoring interval (check every second)
+    const monitorInterval = setInterval(() => {
+      const turnDuration = Date.now() - turnStartTimeRef.current;
+      
+      // After 16 seconds, assume player is disconnected and auto-play for them
+      if (turnDuration > 16000 && !autoPlayInProgressRef.current && lobbyData) {
+        console.log(`[Host Monitor] Player ${currentTurnPlayer} appears disconnected (${Math.floor(turnDuration/1000)}s). Auto-playing...`);
+        
+        // Set flag to prevent duplicate actions
+        autoPlayInProgressRef.current = true;
+        
+        try {
+          // Auto-play logic based on game phase
+          if (lobbyData.gamePhase === 'stat_selection') {
+            // Get the player's hand
+            const playerHands = lobbyData.playerHands as Record<string, Array<Id<"iplstats">>>;
+            const playerHand = playerHands?.[currentTurnPlayer as string];
+            
+            if (playerHand && playerHand.length > 0) {
+              // Select a random stat
+              const availableStats = ['Batting_Average', 'Runs_Scored', 'Wickets_Taken', 'Economy_Rate', 'Batting_Strike_Rate'];
+              const randomStat = availableStats[Math.floor(Math.random() * availableStats.length)];
+              const cardToPlay = playerHand[0]; // Play the first card
+              
+              console.log(`[Host Auto-play] Selecting stat ${randomStat} for disconnected player ${currentTurnPlayer}`);
+              
+              // Make the move on behalf of the disconnected player
+              makeMove({
+                lobbyId: lobbyId,
+                playerName: currentTurnPlayer as string,
+                action: "select_stat",
+                selectedStat: randomStat,
+                selectedCardId: cardToPlay
+              });
+            }
+          } else if (lobbyData.gamePhase === 'card_selection') {
+            // Get the player's hand
+            const playerHands = lobbyData.playerHands as Record<string, Array<Id<"iplstats">>>;
+            const playerHand = playerHands?.[currentTurnPlayer as string];
+            
+            if (playerHand && playerHand.length > 0) {
+              // Play the first card
+              const cardToPlay = playerHand[0];
+              
+              console.log(`[Host Auto-play] Playing card for disconnected player ${currentTurnPlayer}`);
+              
+              // Make the move on behalf of the disconnected player
+              makeMove({
+                lobbyId: lobbyId,
+                playerName: currentTurnPlayer as string,
+                action: "play_card",
+                selectedCardId: cardToPlay
+              });
+            }
+          }
+        } catch (error) {
+          console.error('[Host Auto-play] Error:', error);
+          // Reset flag if auto-play failed
+          autoPlayInProgressRef.current = false;
+        }
+      }
+    }, 1000);
+    
+    return () => clearInterval(monitorInterval);
+  }, [lobbyData, playerName, lobbyId, makeMove]);
+  
+  // Timer logic for all players
   useEffect(() => {
     // Clear any existing timer
     if (timerRef.current) {
@@ -273,17 +378,20 @@ export default function MultiplayerGameBoard() {
     // Reset auto-play flag when turn/phase changes
     autoPlayInProgressRef.current = false;
     
-    // Only start timer when it's player's turn and in an active phase
-    if (isMyTurn && (gamePhase === 'stat_selection' || gamePhase === 'card_selection')) {
-      // Reset timer to 15 seconds
+    // Start timer for active game phases for ALL players
+    const isActivePhase = gamePhase === 'stat_selection' || gamePhase === 'card_selection';
+    const isGameActive = lobbyData?.status === 'in_progress';
+    
+    if (isActivePhase && isGameActive) {
+      // Reset timer to 15 seconds whenever the current player changes
       setTimeLeft(15);
       
-      // Start countdown
+      // Start countdown for everyone
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
           const newTime = prev - 1;
           
-          // If time runs out, auto-play
+          // If time runs out, auto-play (but only for the current player)
           if (newTime <= 0) {
             // Clear timer
             if (timerRef.current) {
@@ -291,8 +399,9 @@ export default function MultiplayerGameBoard() {
               timerRef.current = null;
             }
             
-            // Only proceed if another auto-play isn't already in progress
-            if (!autoPlayInProgressRef.current && userHandCardsData?.length > 0) {
+            // Only proceed if it's my turn, another auto-play isn't in progress,
+            // and I have cards to play
+            if (isMyTurn && !autoPlayInProgressRef.current && userHandCardsData?.length > 0) {
               // Set flag to prevent duplicate actions
               autoPlayInProgressRef.current = true;
               
@@ -343,19 +452,26 @@ export default function MultiplayerGameBoard() {
           return Math.max(0, newTime);
         });
       }, 1000);
-    } else {
-      // Not player's turn, reset timer display
+    } else if (!isActivePhase) {
+      // Game not in active phase, reset timer display
       setTimeLeft(15);
     }
     
-    // Cleanup on unmount
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [isMyTurn, gamePhase, userHandCardsData]);
+  }, [gamePhase, lobbyData?.status, lobbyData?.currentPlayer, isMyTurn, userHandCardsData]);
+
+  // Reset timer when current player changes
+  useEffect(() => {
+    // Reset timer to 15 seconds when the current player changes
+    if (lobbyData?.currentPlayer) {
+      setTimeLeft(15);
+    }
+  }, [lobbyData?.currentPlayer]);
 
   // Initial waiting overlay: show before gamePhase/currentPlayer ready
   const handToRender = (userHandCardsData && userHandCardsData.length > 0)
@@ -609,8 +725,8 @@ export default function MultiplayerGameBoard() {
               </div>
           </div>
 
-          {/* Timer in center */}
-          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn && (
+          {/* Timer in center - visible to all players */}
+          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && (
             <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center">
               <motion.div
                 initial={{ opacity: 0, y: -5 }}
@@ -904,8 +1020,8 @@ export default function MultiplayerGameBoard() {
             </div>
           </div>
           
-          {/* Timer in center - exactly like single player */}
-          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && isMyTurn && (
+          {/* Timer in center - visible to all players */}
+          {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && (
             <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center">
               <motion.div
                 initial={{ opacity: 0, y: -5 }}
