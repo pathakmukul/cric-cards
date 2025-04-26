@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { Ticket as Cricket, LogIn, PlusCircle, LogOut } from 'lucide-react';
+import { Ticket as Cricket, LogIn, PlusCircle, LogOut, Copy } from 'lucide-react';
 import { motion } from 'framer-motion';
-import DiagnosticPanel from './DiagnosticPanel';
-import { Doc, Id } from '../../convex/_generated/dataModel';
 
 interface PlayerCardData {
   _id: Id<"iplstats">;
@@ -80,7 +78,7 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
   };
   
   // Filter out cards with all zeros or empty stats
-  const allCardsData = filterValidCards(allCardsRaw);
+  const allCardsData = filterValidCards(allCardsRaw || []);
   const boostersData = useQuery(api.cards.getBoosters);
   const teamRankingsData = useQuery(api.cards.getTeamRankings);
   
@@ -184,6 +182,16 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
       setHasAutoStarted(true);
     }
   }, [isPvP, activeLobbyData, startGameMut, activeLobbyId, playerName, allCardsData, orangeCapPlayer, purpleCapPlayer, teamRankings, hasAutoStarted]);
+
+  const [copySuccess, setCopySuccess] = useState(false);
+  const handleCopy = useCallback(() => {
+    if (!activeLobbyId) return;
+    const text = `Let's play CricCards, here's my lobby code ${activeLobbyId}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  }, [activeLobbyId]);
 
   const handleCreateLobby = async () => {
     if (!playerName.trim()) {
@@ -340,7 +348,8 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
 
   if (apiError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4 relative" style={{ backgroundImage: `url('/assets/gldnstdm.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+  <div className="absolute inset-0 bg-black/60 z-0" />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -368,7 +377,8 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
   
   if (isLoadingLobbyData) {
      return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4 relative" style={{ backgroundImage: `url('/assets/gldnstdm.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+  <div className="absolute inset-0 bg-black/60 z-0" />
         <div className="text-center">
           <div className="w-16 h-16 border-t-4 border-white border-solid rounded-full animate-spin mb-4 mx-auto"></div>
           <p className="text-white text-xl">Loading Lobby...</p>
@@ -402,7 +412,8 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
     });
     
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4 relative" style={{ backgroundImage: `url('/assets/gldnstdm.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+  <div className="absolute inset-0 bg-black/60 z-0" />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -410,9 +421,15 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-white">Game Lobby</h2>
-            <div className="px-3 py-1 bg-indigo-600 rounded-lg">
-              <span className="text-white text-sm font-mono">{activeLobbyId}</span>
-            </div>
+            {!isPvP && (
+              <div className="px-3 py-1 bg-indigo-600 rounded-lg inline-flex items-center">
+                <span className="text-white text-sm font-mono">{activeLobbyId}</span>
+                <button onClick={handleCopy} className="ml-2 text-white hover:text-gray-300">
+                  <Copy className="w-4 h-4" />
+                </button>
+                {copySuccess && <span className="text-green-400 text-sm ml-2">Copied!</span>}
+              </div>
+            )}
           </div>
           
           <div className="bg-black/30 p-4 rounded-lg mb-6">
@@ -480,35 +497,29 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
             </p>
           )}
         </motion.div>
-        
-        <DiagnosticPanel 
-          apiState={{
-            cardsAvailable: true, 
-            boostersAvailable: true, 
-            teamRankingsAvailable: true, 
-            lobbyApiAvailable: !apiError
-          }}
-          multiplayer={{
-            isActive: !!activeLobbyId,
-            playerName: playerName,
-            lobbyId: activeLobbyId || '',
-            lobbyDataAvailable: !!activeLobbyData
-          }}
-        />
       </div>
     );
   }
   
   if (!activeLobbyId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4 relative" style={{ backgroundImage: `url('/assets/gldnstdm.jpg')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+  <div className="absolute inset-0 bg-black/60 z-0" />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-gray-900/80 backdrop-blur-lg rounded-xl p-8 w-full max-w-lg shadow-2xl"
         >
           <div className="flex justify-center mb-6">
-            <Cricket className="w-16 h-16 text-white" />
+            {isPvP ? (
+              <div style={{ width: 369, height: 201 }}>
+                <img src="/assets/bwlr.jpg" alt="PvP Icon" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+            ) : (
+              <div style={{ width: 369, height: 201 }}>
+                <img src="/assets/fldr.jpg" alt="Multiplayer Icon" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+            )}
           </div>
           
           <h1 className="text-3xl font-bold text-white text-center mb-6">{isPvP ? "PvP Matchmaking" : "Multiplayer Lobby"}</h1>
@@ -598,20 +609,6 @@ export default function LobbyPage({ isPvP = false }: { isPvP?: boolean }) {
           
         </motion.div>
 
-        <DiagnosticPanel 
-          apiState={{
-            cardsAvailable: true,
-            boostersAvailable: true, 
-            teamRankingsAvailable: true,
-            lobbyApiAvailable: !apiError
-          }}
-          multiplayer={{
-            isActive: false,
-            playerName: playerName,
-            lobbyId: '',
-            lobbyDataAvailable: false
-          }}
-        />
       </div>
     );
   }
