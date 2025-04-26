@@ -1,5 +1,5 @@
 import { useGameStore } from '../store/gameStore';
-import { Text, PerspectiveCamera, Image } from '@react-three/drei';
+import { Text, PerspectiveCamera, Image, useTexture, Html } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import { useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
@@ -98,7 +98,8 @@ function CricketCard({
   const { size } = useThree();
   const scale = Math.min(1, size.width / 1200);
   const groupRef = useRef<THREE.Group>(null);
-  const { activeBooster, setActiveBooster, playCardWithStat, currentHand, lastWinner } = useGameStore();
+  const gameStore = useGameStore();
+  const cardBackTexture = useTexture('/assets/cardback.png');
   
   const teamColor = getTeamColor(card.team);
   const teamColorDark = darkenColor(teamColor, 0.7);
@@ -109,41 +110,21 @@ function CricketCard({
   
   const hoverPosition: [number, number, number] = [
     position[0],
-    position[1] + (hovered ? 0.3 : 0),
-    position[2] + (hovered ? 1 : 0)
+    position[1] + (hovered && isActivePlayer ? 0.15 : 0),
+    position[2] + (hovered && isActivePlayer ? 0.3 : 0)
   ];
 
-  const shouldShowStats = !isFaceDown && (
-    (isActivePlayer && gamePhase === 'stat_selection') ||
-    (isActivePlayer && gamePhase === 'card_selection')
-  );
+  const shouldShowStats = !isFaceDown;
   
-  // Check if we're in card selection mode and a stat has already been selected
-  const isCardSelectionWithStatChosen = gamePhase === 'card_selection' && currentHand && currentHand.selectedStat;
+  const isCardSelectionWithStatChosen = gamePhase === 'card_selection' && gameStore.currentHand?.selectedStat;
   
-  // Don't allow interactions if the lastWinner notification is showing
-  const isInteractionDisabled = lastWinner !== null;
+  const isInteractionDisabled = gameStore.lastWinner !== null || !isActivePlayer;
   
-  // Determine the player type and get appropriate stats
   const playerType = useMemo(() => determinePlayerType(card), [card]);
   
-  // Get the stats to display based on player type and game phase
   const statsToDisplay = useMemo(() => {
-    // When in card selection with a stat already chosen, only show that stat
-    if (isCardSelectionWithStatChosen && currentHand) {
-      return [{ 
-        key: currentHand.selectedStat, 
-        label: BATSMAN_STATS.find(s => s.key === currentHand.selectedStat)?.label || 
-               BOWLER_STATS.find(s => s.key === currentHand.selectedStat)?.label || 
-               ALLROUNDER_STATS.find(s => s.key === currentHand.selectedStat)?.label || 
-               currentHand.selectedStat,
-        higher: !['Economy_Rate', 'Bowling_Average', 'Bowling_Strike_Rate'].includes(currentHand.selectedStat)
-      }];
-    }
-    
-    // Otherwise show all stats for the player type
     return getStatsForPlayerType(playerType);
-  }, [playerType, isCardSelectionWithStatChosen, currentHand]);
+  }, [playerType]);
   
   return (
     <group 
@@ -152,35 +133,33 @@ function CricketCard({
       rotation={rotation}
       scale={[scale, scale, scale]}
       onClick={(e) => {
-        // Don't process clicks if the lastWinner notification is showing
-        if (isInteractionDisabled || !isActivePlayer) return;
+        if (isInteractionDisabled) return;
         
-        // Direct single-action click handling
         if (gamePhase === 'stat_selection') {
           onSelect();
         } 
         else if (gamePhase === 'card_selection') {
-          if (isCardSelectionWithStatChosen && currentHand) {
-            // Play card with the already selected stat
-            const currentPlayerName = useGameStore.getState().players[useGameStore.getState().currentPlayer];
-            playCardWithStat(currentPlayerName, card, currentHand.selectedStat);
-          } else {
-            // Just select the card
-            onSelect();
-          }
-          e.stopPropagation();
+           if (isCardSelectionWithStatChosen && gameStore.currentHand) { 
+              const currentPlayerName = gameStore.players[gameStore.currentPlayer];
+              gameStore.playCardWithStat(currentPlayerName, card, gameStore.currentHand.selectedStat);
+           } else {
+              onSelect();
+           }
+           e.stopPropagation(); 
         }
       }}
       onPointerDown={() => {
-        if (isActivePlayer && !isInteractionDisabled) {
+        if (!isInteractionDisabled) {
           setPressed(true);
         }
       }}
       onPointerUp={() => {
-        setPressed(false);
+        if (!isInteractionDisabled) {
+            setPressed(false);
+        }
       }}
       onPointerOver={() => {
-        if (isActivePlayer && !isInteractionDisabled) {
+        if (!isInteractionDisabled) {
           setHovered(true);
           document.body.style.cursor = 'pointer';
         }
@@ -191,78 +170,37 @@ function CricketCard({
         document.body.style.cursor = 'auto';
       }}
     >
-      {/* Card base with slight rounded corners effect */}
-      <group scale={isSelected || hovered ? [1.05, 1.05, 1.05] : (pressed ? [0.98, 0.98, 0.98] : [1, 1, 1])}>
-        {/* Main card body */}
+      <group scale={isSelected ? [1.05, 1.05, 1.05] : (pressed && !isInteractionDisabled ? [0.98, 0.98, 0.98] : [1, 1, 1])}>
         <mesh>
           <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, 0.05]} />
           <meshStandardMaterial color={isFaceDown ? "#1e3a8a" : teamColor} />
         </mesh>
         
-        {/* Card border overlay - making it more prominent */}
         <mesh position={[0, 0, 0.026]} scale={[1.02, 1.02, 1]}>
           <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, 0.001]} />
           <meshStandardMaterial color={isFaceDown ? "#0f2465" : "#000000"} opacity={0.9} transparent />
         </mesh>
         
-        {/* Inner card content area */}
         <mesh position={[0, 0, 0.027]} scale={[0.98, 0.98, 1]}>
           <boxGeometry args={[CARD_WIDTH, CARD_HEIGHT, 0.001]} />
           <meshStandardMaterial color={isFaceDown ? "#1e3a8a" : teamColor} opacity={0.9} transparent />
         </mesh>
 
-        {/* Team-specific decorative elements - directly on the team color background */}
         {!isFaceDown && (
           getTeamDecoration(card.team, teamColorLight)
         )}
 
-        {/* Card back design */}
         {isFaceDown && (
-          <group position={[0, 0, 0.06]}>
-            {/* Logo background */}
-            <mesh position={[0, 0, 0]} scale={[0.4, 0.4, 0.01]} rotation={[0, 0, Math.PI / 4]}>
-              <planeGeometry />
-              <meshBasicMaterial color="#0f2465" opacity={0.7} transparent />
-            </mesh>
-            
-            {/* IPL Logo */}
-            <mesh position={[0, 0, 0.001]} scale={[0.35, 0.35, 0.01]}>
-              <planeGeometry />
-              <meshBasicMaterial color="#ffffff" />
-            </mesh>
-            
-            <Text
-              position={[0, 0, 0.01]}
-              fontSize={0.12}
-              color="#ff9933"
-              anchorX="center"
-              anchorY="middle"
-            >
-              IPL
-            </Text>
-            
-            {/* Decorative elements */}
-            {[...Array(8)].map((_, i) => (
-              <mesh 
-                key={i} 
-                position={[
-                  Math.sin((i * Math.PI) / 4) * 0.3,
-                  Math.cos((i * Math.PI) / 4) * 0.3,
-                  0
-                ]}
-                scale={[0.05, 0.05, 0.01]}
-              >
-                <circleGeometry />
-                <meshBasicMaterial color="#ff9933" opacity={0.7} transparent />
-              </mesh>
-            ))}
-          </group>
+          <mesh position={[0, 0, 0.028]} scale={[0.98, 0.98, 1]}>
+            <planeGeometry args={[CARD_WIDTH, CARD_HEIGHT]} />
+            <meshBasicMaterial 
+              map={cardBackTexture}
+            />
+          </mesh>
         )}
         
-        {/* Card front design */}
         {!isFaceDown && (
           <>
-            {/* Team header with gradient */}
             <mesh position={[0, 0.4, 0.052]} scale={[CARD_WIDTH, 0.25, 0.001]}>
               <planeGeometry />
               <meshBasicMaterial color={teamColor} />
@@ -273,7 +211,6 @@ function CricketCard({
               <meshBasicMaterial color={teamColorDark} />
             </mesh>
             
-            {/* Team name */}
             <Text
               position={[0, 0.45, 0.055]}
               fontSize={0.06}
@@ -285,7 +222,6 @@ function CricketCard({
               {card.team}
             </Text>
             
-            {/* Player name with stylish background */}
             <mesh position={[0, 0.33, 0.054]} scale={[CARD_WIDTH * 0.85, 0.1, 0.001]}>
               <planeGeometry />
               <meshBasicMaterial color="#000000" opacity={0.6} transparent />
@@ -303,7 +239,6 @@ function CricketCard({
               {card.Player_Name}
             </Text>
             
-            {/* Decorative line under player name */}
             <mesh position={[0, 0.27, 0.054]} scale={[CARD_WIDTH * 0.7, 0.003, 0.001]}>
               <planeGeometry />
               <meshBasicMaterial color="#ffffff" opacity={0.7} transparent />
@@ -311,53 +246,50 @@ function CricketCard({
           </>
         )}
         
-        {/* Stats section with modern styling */}
         {shouldShowStats && (
           <group position={[0, 0, 0.06]}>
             {statsToDisplay.map((stat, idx) => {
-              if ((isCardSelectionWithStatChosen && idx >= 1) || (!isCardSelectionWithStatChosen && idx >= 5)) return null;
+              if (idx >= 5) return null;
               
               const yPos = 0.15 - idx * 0.12;
-              const canSelectStat = isActivePlayer && (
+              const canSelectStat = !isInteractionDisabled && (
                 (gamePhase === 'stat_selection') ||
                 (gamePhase === 'card_selection' && isSelected)
               );
               const isStatSelected = selectedStat === stat.key;
               
-              // More modern color scheme
+              const currentActiveBooster = gameStore.activeBooster;
+              
               const bgColor = isStatSelected 
                 ? "#4ade80"
-                : (activeBooster === 'orange' ? "#f97316" 
-                   : activeBooster === 'purple' ? "#a855f7"
-                   : activeBooster === 'teamrank' ? "#0ea5e9"
+                : (currentActiveBooster === 'orange' ? "#f97316" 
+                   : currentActiveBooster === 'purple' ? "#a855f7"
+                   : currentActiveBooster === 'teamrank' ? "#0ea5e9"
                    : (canSelectStat 
                       ? teamColorDark
                       : card.team === 'CSK' 
-                        ? '#C78F00' // Darker gold for CSK
-                        : teamColorDark)); // Use teamColorDark for all states
+                        ? '#C78F00'
+                        : teamColorDark));
               
               const textColor = isStatSelected ? "#000000" : "#ffffff";
               const valueColor = isStatSelected ? "#000000" : "#ffcc00";
               
               return (
                 <group key={stat.key} position={[0, yPos, 0]}>
-                  {/* Main clickable mesh - BIGGER and positioned on TOP */}
                   {canSelectStat && (
                     <mesh 
                       position={[0, 0, 0.1]} 
                       scale={[CARD_WIDTH * 0.9, 0.09, 0.01]}
                       onClick={(e) => {
                         if (isInteractionDisabled) return;
+                        
                         e.stopPropagation();
                         
-                        // Directly handle stat selection without intermediate steps
                         if (gamePhase === 'stat_selection') {
-                          // This is the first phase - directly select the stat
                           onStatSelect && onStatSelect(stat.key);
                         } else if (gamePhase === 'card_selection' && isSelected) {
-                          // Card is already selected, play with this stat immediately
-                          playCardWithStat(
-                            useGameStore.getState().players[useGameStore.getState().currentPlayer],
+                          gameStore.playCardWithStat(
+                            gameStore.players[gameStore.currentPlayer],
                             card,
                             stat.key
                           );
@@ -377,19 +309,15 @@ function CricketCard({
                     </mesh>
                   )}
                   
-                  {/* Background - non-interactive, just visual */}
-                  {(canSelectStat || isStatSelected) && (
-                    <mesh position={[0, 0, 0.002]} scale={[CARD_WIDTH * 0.9, 0.09, 0.001]}>
+                  <mesh position={[0, 0, 0.002]} scale={[CARD_WIDTH * 0.9, 0.09, 0.001]}>
                       <planeGeometry />
                       <meshBasicMaterial 
                         color={bgColor} 
                         transparent
-                        opacity={canSelectStat || isStatSelected ? 1.0 : 0.2}
+                        opacity={1.0}
                       />
-                    </mesh>
-                  )}
+                  </mesh>
                   
-                  {/* Stat label */}
                   <Text
                     position={[-0.25, 0, 0.003]}
                     fontSize={0.045}
@@ -401,7 +329,6 @@ function CricketCard({
                     {stat.label}:
                   </Text>
                   
-                  {/* Stat value */}
                   <Text
                     position={[0.25, 0, 0.003]}
                     fontSize={0.05}
@@ -411,13 +338,11 @@ function CricketCard({
                     fontWeight="bold"
                   >
                     {(() => {
-                      // Handle all possible cases where stat value could be located
                       if (card[stat.key] !== undefined) {
                         return card[stat.key].toString();
                       } else if (card.stats && card.stats[stat.key] !== undefined) { 
                         return card.stats[stat.key].toString();
                       } else {
-                        // Try to find the key with proper capitalization
                         const adjustedKey = Object.keys(card).find(
                           k => k.toLowerCase() === stat.key.toLowerCase()
                         );
@@ -426,7 +351,6 @@ function CricketCard({
                     })()}
                   </Text>
                   
-                  {/* Highlight effect for selectable stats */}
                   {canSelectStat && !isStatSelected && (
                     <mesh position={[0, 0, 0.001]} scale={[CARD_WIDTH * 0.9, 0.09, 0.001]}>
                       <planeGeometry />
@@ -439,15 +363,14 @@ function CricketCard({
           </group>
         )}
         
-        {/* Booster indicator with glow effect */}
-        {activeBooster && (
+        {gameStore.activeBooster && (
           <group position={[0.25, 0.55, 0.055]}>
             <mesh scale={[0.15, 0.15, 0.001]}>
               <circleGeometry />
               <meshBasicMaterial 
                 color={
-                  activeBooster === 'orange' ? "#f97316" 
-                  : activeBooster === 'purple' ? "#a855f7"
+                  gameStore.activeBooster === 'orange' ? "#f97316" 
+                  : gameStore.activeBooster === 'purple' ? "#a855f7"
                   : "#0ea5e9"
                 } 
               />
@@ -457,8 +380,8 @@ function CricketCard({
               <circleGeometry />
               <meshBasicMaterial 
                 color={
-                  activeBooster === 'orange' ? "#f97316" 
-                  : activeBooster === 'purple' ? "#a855f7"
+                  gameStore.activeBooster === 'orange' ? "#f97316" 
+                  : gameStore.activeBooster === 'purple' ? "#a855f7"
                   : "#0ea5e9"
                 }
                 opacity={0.5}
@@ -474,12 +397,11 @@ function CricketCard({
               anchorY="middle"
               fontWeight="bold"
             >
-              {activeBooster === 'orange' ? "O" : activeBooster === 'purple' ? "P" : "T"}
+              {gameStore.activeBooster === 'orange' ? "O" : gameStore.activeBooster === 'purple' ? "P" : "T"}
             </Text>
           </group>
         )}
         
-        {/* Selection indicator with animation effect */}
         {isSelected && (
           <>
             <mesh position={[0, 0, -0.02]} scale={[CARD_WIDTH * 1.1, CARD_HEIGHT * 1.1, 0.001]}>
@@ -495,7 +417,6 @@ function CricketCard({
         )}
       </group>
       
-      {/* Card highlight effect when hovered */}
       {hovered && (
         <mesh position={[0, 0, -0.01]} scale={[1.1, 1.1, 0.01]}>
           <boxGeometry />
@@ -506,7 +427,6 @@ function CricketCard({
   );
 }
 
-// Helper functions for color manipulation
 function darkenColor(hex: string, factor: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -540,15 +460,19 @@ export default function CardHand() {
     selectCard, 
     selectStat,
     currentHand,
-    selectedStat,
-    selectedCard,
-    playCardWithStat,
-    resetSelectionState
+    selectedStat, 
+    selectedCard, 
+    lastWinner 
   } = useGameStore();
   
   const { size } = useThree();
   const scale = Math.min(1, size.width / 1200);
   
+  const humanPlayerIndex = players.indexOf("You"); 
+  const fixedHumanIndex = humanPlayerIndex === -1 ? 0 : humanPlayerIndex;
+  const isMyTurn = players[currentPlayer] === "You";
+  const showWaitingIndicator = !isMyTurn && gamePhase && gamePhase !== 'waiting' && !lastWinner;
+
   return (
     <group>
       <PerspectiveCamera 
@@ -557,6 +481,55 @@ export default function CardHand() {
         rotation={[-0.18, 0, 0]}
         fov={35} 
       />
+      
+      {/* Waiting indicator */}
+      {showWaitingIndicator && (
+        <Html
+          center
+          position={[0, 1, 0]}
+          style={{
+            width: '300px',
+            height: '120px',
+            background: 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(4px)',
+            borderRadius: '12px',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            borderRadius: '50%', 
+            border: '3px solid rgba(59, 130, 246, 0.3)',
+            borderTopColor: '#3b82f6',
+            animation: 'spin 1s linear infinite',
+            marginBottom: '12px'
+          }} className="animate-spin" />
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            .animate-spin {
+              animation: spin 1s linear infinite;
+            }
+          `}</style>
+          <div style={{ 
+            color: 'white', 
+            fontFamily: 'sans-serif', 
+            fontWeight: 'bold',
+            fontSize: '16px',
+            textAlign: 'center'
+          }}>
+            Waiting for {players[currentPlayer]}'s move...
+          </div>
+        </Html>
+      )}
       
       <group>
         <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[TABLE_RADIUS, TABLE_RADIUS, 1]}>
@@ -593,57 +566,51 @@ export default function CardHand() {
       
       {players.map((playerName, playerIndex) => {
         const playerHand = playerHands[playerName] || [];
-        const isCurrentPlayer = playerIndex === currentPlayer;
+        const isCurrentTurnPlayer = playerIndex === currentPlayer; 
+        const isHumanPlayer = playerName === "You";
         
         let playerAngle, playerX, playerZ, rotationY;
         
-        if (isCurrentPlayer) {
-          playerAngle = Math.PI;
-          playerX = 0;
-          playerZ = TABLE_RADIUS - 1;
-          rotationY = 0;
+        const angleIncrement = (Math.PI * 2) / players.length; 
+        playerAngle = playerIndex * angleIncrement;
+
+        const radius = TABLE_RADIUS * 0.8;
+        playerX = Math.sin(playerAngle) * radius;
+        playerZ = Math.cos(playerAngle) * radius;
+        
+        // Adjust rotation to ensure card backs are visible from all angles
+        // Main player has no rotation, opponent has PI, side players need PI/2 or -PI/2
+        if (playerName === "You") {
+          rotationY = 0; // No rotation for human player
         } else {
-          const otherPlayerCount = players.length - 1;
-          const otherPlayerIndex = playerIndex < currentPlayer ? playerIndex : playerIndex - 1;
-          
-          if (otherPlayerCount === 1) {
-            playerAngle = 0;
-          } else if (otherPlayerCount === 2) {
-            playerAngle = (otherPlayerIndex === 0) ? Math.PI * 0.75 : Math.PI * 1.25;
-          } else if (otherPlayerCount === 3) {
-            playerAngle = Math.PI * 0.5 + (otherPlayerIndex * Math.PI * 0.5);
-            if (playerAngle >= Math.PI * 2) playerAngle -= Math.PI * 2;
-          } else {
-            playerAngle = (Math.PI * 2 * otherPlayerIndex / otherPlayerCount + Math.PI) % (Math.PI * 2);
-          }
-          
-          playerX = Math.sin(playerAngle) * (TABLE_RADIUS - 1);
-          playerZ = Math.cos(playerAngle) * (TABLE_RADIUS - 1);
-          rotationY = Math.atan2(playerX, playerZ);
+          // Calculate rotation to face the center
+          rotationY = Math.PI + Math.atan2(playerX, playerZ);
         }
         
         return (
           <group key={playerName} position={[playerX, 0, playerZ]} rotation={[0, rotationY, 0]}>
             <Text
-              position={[0, 0.2, 0]}
-              fontSize={0.2}
-              color={isCurrentPlayer ? "#4ade80" : "white"}
+              position={[0, CARD_HEIGHT * 0.7, 0.1]}
+              fontSize={0.18}
+              color={isCurrentTurnPlayer ? "#4ade80" : "white"}
               anchorX="center"
               anchorY="middle"
               fontWeight="bold"
-              rotation={[0, isCurrentPlayer ? 0 : Math.PI, 0] as [number, number, number]}
+              // rotation={[0, Math.PI, 0]} 
+              rotation={[0, playerName === "You" ? 0 : -rotationY, 0]}
+
             >
-              {playerName} {isCurrentPlayer ? "(Your Turn)" : ""}
+              {playerName} {isCurrentTurnPlayer ? "(Turn)" : ""}
             </Text>
             
-            <group position={[0, 0, 0.5]}>
+            <group position={[0, 0, 0]}> 
               {playerHand.map((card, cardIndex) => {
-                const handWidth = Math.min(playerHand.length * (CARD_WIDTH + 0.15), 3.0);
+                const handWidth = Math.min(playerHand.length * (CARD_WIDTH + 0.15), 2.5);
                 const x = ((cardIndex / (Math.max(playerHand.length - 1, 1))) - 0.5) * handWidth;
-                const isSelected = isCurrentPlayer && selectedCard?.id === card.id;
-                const cardRotation: [number, number, number] = isCurrentPlayer 
-                  ? [0, 0, 0]
-                  : [Math.PI/6, Math.PI, 0];
+                const isSelectedForHuman = isHumanPlayer && isCurrentTurnPlayer && selectedCard?.id === card.id;
+                
+                const cardRotation: [number, number, number] = 
+                    isHumanPlayer ? [0.1, 0, 0] : [0, 0, 0]; 
                 
                 return (
                   <CricketCard
@@ -651,20 +618,22 @@ export default function CardHand() {
                     card={card}
                     position={[x, 0, 0]}
                     rotation={cardRotation}
-                    isSelected={isSelected}
+                    isSelected={isSelectedForHuman}
                     onSelect={() => {
-                      if (isCurrentPlayer) {
+                      if (isHumanPlayer && isCurrentTurnPlayer) {
                         selectCard(card);
                       }
                     }}
                     onStatSelect={(stat) => {
-                      selectStat(stat);
+                      if (isHumanPlayer && isCurrentTurnPlayer) {
+                        selectStat(stat);
+                      }
                     }}
                     showStats={true}
-                    isActivePlayer={isCurrentPlayer}
+                    isActivePlayer={isHumanPlayer && isCurrentTurnPlayer && !lastWinner} 
                     gamePhase={gamePhase}
-                    isFaceDown={!isCurrentPlayer}
-                    selectedStat={selectedStat}
+                    isFaceDown={!isHumanPlayer} 
+                    selectedStat={selectedStat} 
                   />
                 );
               })}
@@ -673,62 +642,67 @@ export default function CardHand() {
         );
       })}
       
+      {/* Remove the played cards display from the center of the board */}
+      {/* Keeping the logic but commenting it out in case it's needed later */}
+      {/*
       {currentHand && currentHand.playedCards.map((playedCard, index) => {
-        // Calculate position in a circular arrangement
-        const totalPlayers = currentHand.playedCards.length;
-        const angle = (index / Math.max(totalPlayers - 1, 1) - 0.5) * Math.PI * 0.6;
-        const radius = 1.2;
+        const totalPlayed = currentHand.playedCards.length;
+        const radius = 1.0;
+        const angleOffset = -Math.PI / 2;
+        const angle = angleOffset + (index / totalPlayed) * Math.PI * 2;
+
         const x = Math.sin(angle) * radius;
-        const z = Math.cos(angle) * radius * 0.5;
+        const z = Math.cos(angle) * radius - radius * 0.5;
+        const y = -0.6;
         
-        // Ensure the card is face up and highlight the one that won
-        const winnerCard = currentHand.winner === playedCard.playerId;
+        const isLeading = currentHand.leadingCard?.playerId === playedCard.playerId;
         
         return (
           <group key={`played-${playedCard.card.id}-${index}`}>
-            {/* Add player name above the played card */}
             <Text
-              position={[x, 0.25, z]}
-              fontSize={0.08}
-              color={winnerCard ? "#4ade80" : "#ffffff"}
+              position={[x, y + CARD_HEIGHT * 0.65, z + 0.1]}
+              fontSize={0.12}
+              color={isLeading ? "#FFD700" : "#ffffff"} 
               anchorX="center"
               anchorY="middle"
               fontWeight="bold"
+              rotation={[0, Math.PI, 0]}
             >
               {playedCard.playerId}
             </Text>
             
             <CricketCard
               card={playedCard.card}
-              position={[x, 0.1, z]}
-              rotation={[0, Math.PI, 0] as [number, number, number]}
-              isSelected={winnerCard}
-              onSelect={() => {}}
-              showStats={true}
-              isActivePlayer={false}
-              gamePhase={gamePhase}
-              selectedStat={currentHand.selectedStat}
+              position={[x, y, z]} 
+              rotation={[0, Math.PI, 0]}
+              isSelected={isLeading} 
+              onSelect={() => {}} 
+              showStats={true} 
+              isActivePlayer={false} 
+              gamePhase={gamePhase} 
+              selectedStat={currentHand.selectedStat} 
+              isFaceDown={false} 
             />
           </group>
         );
       })}
+      */}
     </group>
   );
 }
 
 function getTeamColor(team?: string): string {
   const teamColors: Record<string, string> = {
-    'MI': '#004BA0',
-    'CSK': '#FDB913',
-    'RCB': '#EC1C24',
-    'KKR': '#3A225D',
-    'DC': '#0078BC',
-    'PBKS': '#ED1B24',
-    'RR': '#E60693',
-    'SRH': '#FF822A',
-    'GT': '#1B2133',
-    'LSG': '#A7D5F6',
+    'MUM': '#004BA0',
+    'CHE': '#FDB913',
+    'BLR': '#EC1C24',
+    'KOL': '#3A225D',
+    'DEL': '#0078BC',
+    'PUN': '#ED1B24',
+    'RAJ': '#254AA5',
+    'HYD': '#FF822A',
+    'GUJ': '#1B2133',
+    'LKN': '#A7D5F6',
   };
-  
   return team && teamColors[team] ? teamColors[team] : '#795548';
 }

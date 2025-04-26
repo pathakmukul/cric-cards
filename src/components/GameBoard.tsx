@@ -17,16 +17,16 @@ export interface BoosterButtonProps {
 
 const getTeamColor = (team?: string): string => {
   const teamColors: Record<string, string> = {
-    'Mumbai Indians': '#004BA0',
-    'Chennai Super Kings': '#FDB913',
-    'Royal Challengers Bangalore': '#EC1C24',
-    'Kolkata Knight Riders': '#3A225D',
-    'Delhi Capitals': '#0078BC',
-    'Punjab Kings': '#ED1B24',
-    'Rajasthan Royals': '#254AA5',
-    'Sunrisers Hyderabad': '#FF822A',
-    'Gujarat Titans': '#1B2133',
-    'Lucknow Super Giants': '#A7D5F6',
+    'MUM': '#004BA0',
+    'CHE': '#FDB913', 
+    'BLR': '#EC1C24',
+    'KOL': '#3A225D',
+    'DEL': '#0078BC',
+    'PUN': '#ED1B24',
+    'RAJ': '#254AA5',
+    'HYD': '#FF822A',
+    'GUJ': '#1B2133',
+    'LKN': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#1e40af';
 };
@@ -224,17 +224,43 @@ export default function GameBoard() {
     playerHands,
     selectStat,
     selectCard,
-    playCardWithStat
+    playCardWithStat,
+    triggerBotMove
   } = useGameStore();
   
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const [timeLeft, setTimeLeft] = useState(15);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const botMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const allCards = useQuery(api.cards.getAll);
   const boosters = useQuery(api.cards.getBoosters) as any[] | undefined;
   const teamRankings = useQuery(api.cards.getTeamRankings) as any[] | undefined;
+
+  // Add this new state for the confirmation dialog
+  const [showHomeConfirm, setShowHomeConfirm] = useState(false);
+  
+  // Add this function to handle navigation with confirmation
+  const handleHomeNavigation = () => {
+    // Only show confirmation if game has started (not in waiting phase)
+    if (gamePhase !== 'waiting' && gamePhase !== 'game_over') {
+      setShowHomeConfirm(true);
+    } else {
+      // If we're in waiting or game over, just go home directly
+      resetGame();
+      navigate('/');
+    }
+  };
+  
+  const confirmGoHome = () => {
+    // Hide confirmation dialog
+    setShowHomeConfirm(false);
+    // Reset game state
+    resetGame();
+    // Navigate to home
+    navigate('/');
+  };
 
   useEffect(() => {
     if (allCards && boosters && teamRankings) {
@@ -317,43 +343,58 @@ export default function GameBoard() {
 
   // Start timer when player changes or game phase changes to stat/card selection
   useEffect(() => {
-    // Don't start timer if we're showing the round winner notification
+    // Clear any pending bot move if player/phase/winner changes
+    if (botMoveTimeoutRef.current) {
+      clearTimeout(botMoveTimeoutRef.current);
+      botMoveTimeoutRef.current = null;
+    }
+
+    const isBotTurn = currentPlayerName?.startsWith("Bot ");
+
+    // Timer logic
     if ((gamePhase === 'stat_selection' || gamePhase === 'card_selection') && !lastWinner) {
-      // Reset timer
       setTimeLeft(15);
+      if (timerRef.current) clearInterval(timerRef.current);
       
-      // Clear any existing timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      
-      // Start new timer
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            // Time's up - make a random move ONLY if not showing winner notification
             if (!lastWinner) {
-              makeRandomMove();
+              // Time's up - make random move for HUMAN ONLY
+              if (!isBotTurn) {
+                console.log("Time ran out for human player. Making random move.");
+                makeRandomMove(); 
+              } else {
+                // Bot's time ran out - trigger their move immediately instead of random
+                console.log(`Time ran out for ${currentPlayerName}. Triggering bot move immediately.`);
+                triggerBotMove(currentPlayerName);
+              }
             }
-            return 15; // Reset timer for next player
+            return 15; // Reset timer
           }
           return prev - 1;
         });
       }, 1000);
-    } else if (lastWinner) {
-      // If showing winner notification, pause the timer by clearing the interval
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+
+      // If it's a bot's turn, schedule their move after a delay
+      if (isBotTurn) {
+        console.log(`Scheduling move for bot: ${currentPlayerName} in 1.8 seconds.`);
+        botMoveTimeoutRef.current = setTimeout(() => {
+          console.log(`Executing scheduled move for bot: ${currentPlayerName}`);
+          triggerBotMove(currentPlayerName);
+          botMoveTimeoutRef.current = null; // Clear ref after execution
+        }, 1800); // 1.8 second delay
       }
+
+    } else { // If not correct phase or last winner is showing
+      if (timerRef.current) clearInterval(timerRef.current);
     }
     
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (botMoveTimeoutRef.current) clearTimeout(botMoveTimeoutRef.current); // Clear bot timeout on cleanup
     };
-  }, [currentPlayer, gamePhase, lastWinner]);
+  }, [currentPlayer, gamePhase, lastWinner, players, triggerBotMove]);
   
   // Clear timer when component unmounts
   useEffect(() => {
@@ -364,48 +405,71 @@ export default function GameBoard() {
     };
   }, []);
   
-  // Function to make a random move when time runs out
+  // Function to make a random move when time runs out (FOR HUMAN ONLY)
   const makeRandomMove = () => {
     const currentPlayerName = players[currentPlayer];
+    // Only make random move if it's the human player
+    if (currentPlayerName !== "You") return;
+
     const playerCards = playerHands[currentPlayerName] || [];
-    
     if (playerCards.length === 0) return;
     
-    // Pick a random card from the player's hand
     const randomCard = playerCards[Math.floor(Math.random() * playerCards.length)];
     
-    // If we're in stat selection phase, we need to select a stat first
     if (gamePhase === 'stat_selection') {
       const statKeys = ['Batting_Average', 'Batting_Strike_Rate', 'Runs_Scored', 'Centuries', 
                         'Wickets_Taken', 'Economy_Rate', 'Bowling_Average', 'Sixes'];
       const randomStat = statKeys[Math.floor(Math.random() * statKeys.length)];
-      
-      // Play the card with the random stat
+      console.log(`Human time out: Playing random card ${randomCard.Player_Name} with random stat ${randomStat}`);
       playCardWithStat(currentPlayerName, randomCard, randomStat);
     } 
-    // If we're in card selection phase, a stat is already selected
-    else if (gamePhase === 'card_selection' && currentHand) {
-      // Play the random card with the already selected stat
+    else if (gamePhase === 'card_selection' && currentHand?.selectedStat) {
+      console.log(`Human time out: Playing random card ${randomCard.Player_Name} with selected stat ${currentHand.selectedStat}`);
       playCardWithStat(currentPlayerName, randomCard, currentHand.selectedStat);
+    } else {
+      console.warn("Cannot make random move - invalid state.", { gamePhase, currentHand });
     }
   };
 
   return (
-    <div className="w-screen h-screen bg-gradient-to-b from-blue-900 to-black overflow-hidden">
+    <div className="w-screen h-screen overflow-hidden relative">
+      {/* Stadium background image */}
+      <div 
+        className="absolute inset-0 z-0 bg-cover bg-center"
+        style={{ backgroundImage: 'url("/stdm_solo.jpg")' }}
+      />
+      
+      {/* Dark overlay for better visibility */}
+      <div className="absolute inset-0 z-0 bg-black opacity-60"></div>
+      
       {isLoading ? (
-        <div className="flex items-center justify-center h-full">
+        <div className="flex items-center justify-center h-full relative z-10">
           <div className="text-white text-2xl font-bold">
-            Loading IPL Cricket Cards...
+            Loading Cricket Cards...
             <div className="mt-4 w-12 h-12 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto"></div>
           </div>
         </div>
       ) : (
         <>
-          <div className="absolute top-0 left-0 right-0 p-4 bg-blue-900/90 backdrop-blur-md z-10 border-b border-blue-700">
+          {/* Main Navbar */}
+          <div className="absolute top-0 left-0 right-0 p-4 bg-blue-900/90 backdrop-blur-md z-40 border-b border-blue-700">
             <div className="flex justify-between items-center">
-              <h1 className="text-2xl font-bold text-white">IPL Cricket Cards Game</h1>
+              {/* Left side - Logo and Home button */}
+              <div className="flex items-center gap-4">
+                <span
+                  onClick={handleHomeNavigation}
+                  className="text-2xl text-white hover:text-yellow-300 cursor-pointer transition-colors"
+                  title="Return to Home"
+                >
+                  🏠
+                </span>
+                
+                <h1 className="text-2xl font-bold text-white">
+                  CricCards Game
+                </h1>
+              </div>
               
-              {/* Timer in center */}
+              {/* Center - Timer */}
               {(gamePhase === 'stat_selection' || gamePhase === 'card_selection') && !lastWinner && (
                 <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center">
                   <motion.div
@@ -422,6 +486,7 @@ export default function GameBoard() {
                 </div>
               )}
               
+              {/* Right side - Current player and round info */}
               <div className="flex items-center gap-4">
                 <span className="text-white mr-3">Current Player: {currentPlayerName}</span>
                 <div className="flex items-center space-x-2">
@@ -481,8 +546,8 @@ export default function GameBoard() {
 
           {/* Current Round Display */}
           {currentHand && (
-            <div className="absolute top-20 left-0 right-0 mx-auto w-full max-w-5xl px-4">
-              <div className="bg-blue-900/40 backdrop-blur-md rounded-xl p-6">
+            <div className="absolute top-20 left-0 right-0 mx-auto w-full max-w-5xl px-4 z-20">
+              <div className="bg-blue-900/60 backdrop-blur-md rounded-xl p-6">
                 <div className="grid grid-cols-4 gap-6">
                   {currentHand.playedCards.map((playedCard, index) => (
                     <PlayedCardDisplay
@@ -513,7 +578,8 @@ export default function GameBoard() {
             </motion.div>
           )}
 
-          <div className="pt-16 h-full">
+          {/* Canvas container - make sure it stays below the navbar */}
+          <div className="pt-16 h-full relative z-5">
             <Canvas camera={{ position: [0, 5, 10], fov: 50 }}>
               <Suspense fallback={null}>
                 <ambientLight intensity={0.7} />
@@ -525,9 +591,9 @@ export default function GameBoard() {
           </div>
 
           {gamePhase === 'waiting' && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70 z-30">
               <div className="bg-white/10 backdrop-blur-md p-8 rounded-lg text-center">
-                <h2 className="text-3xl font-bold text-white mb-4">Welcome to IPL Cricket Cards</h2>
+                <h2 className="text-3xl font-bold text-white mb-4">Welcome to IT20 Cricket Cards</h2>
                 <p className="text-white mb-6">Each player gets 5 cards. Select a stat to play with and compete against other players!</p>
                 <button 
                   onClick={() => startNewHand()}
@@ -593,6 +659,36 @@ export default function GameBoard() {
                 </button>
               </motion.div>
             </motion.div>
+          )}
+
+          {/* Home Confirmation Dialog */}
+          {showHomeConfirm && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-blue-900/90 backdrop-blur-md p-6 rounded-xl max-w-md mx-4 border-2 border-blue-700"
+              >
+                <h3 className="text-xl font-bold text-white mb-3">Exit Game?</h3>
+                <p className="text-blue-100 mb-5">
+                  Are you sure you want to exit? Your current game progress will be lost.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button 
+                    onClick={() => setShowHomeConfirm(false)}
+                    className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={confirmGoHome}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                  >
+                    Exit Game
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </>
       )}

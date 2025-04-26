@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ticket as Cricket } from 'lucide-react';
+// import { Ticket as Cricket } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function LandingPage() {
@@ -26,42 +26,64 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 flex items-center justify-center">
-      <div className="text-center">
-        <div className="flex justify-center mb-8">
-          <Cricket className="w-20 h-20 text-white" />
+    <div 
+      className="min-h-screen flex items-center justify-center bg-cover bg-center relative"
+      style={{ backgroundImage: "url('/stadium.jpg')" }}
+    >
+      <div className="text-center bg-black bg-opacity-60 p-10 rounded-lg shadow-2xl">
+        <div className="flex justify-center mb-6">
+          <img 
+            src="/assets/cclogo.png" 
+            alt="CricCards Logo" 
+            className="w-60 h-60 object-contain"
+          />
         </div>
-        <h1 className="text-6xl font-bold text-white mb-4">IPL Card Battle</h1>
-        <p className="text-xl text-gray-300 mb-8">Challenge your friends in the ultimate IPL card game!</p>
-        <div className="flex flex-col md:flex-row gap-4 justify-center">
+        <h1 className="text-6xl font-bold text-white mb-4 font-sans">CricCards Battle</h1>
+        <p className="text-xl text-gray-300 mb-8">Challenge your friends in the ultimate IndianT20 cricket card game!</p>
+        <div className="flex flex-col md:flex-row gap-6 justify-center items-stretch md:items-stretch">
           <button
             onClick={handlePlaySinglePlayer}
-            className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-lg text-xl 
-                    transform transition hover:scale-105 hover:shadow-xl"
+            className="flex-1 px-8 py-6 bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold rounded-lg text-lg 
+                    transform transition hover:scale-105 hover:shadow-xl flex flex-col justify-center items-center min-h-[120px] min-w-[220px]
+                    border border-yellow-300/30"
           >
-            Single Player
+            <span className="block text-2xl tracking-wide text-yellow-100">Play Solo</span>
+            <span className="block text-base mt-1.5 font-normal">Battle with AI bots</span>
           </button>
-          <button
-            onClick={handleMultiplayerClick}
-            className="px-8 py-4 bg-gradient-to-r from-purple-400 to-pink-500 text-white font-bold rounded-lg text-xl 
-                    transform transition hover:scale-105 hover:shadow-xl"
-          >
-            Multiplayer
-          </button>
+          
           <button
             onClick={() => navigate('/pvp')}
-            className="px-8 py-4 bg-gradient-to-r from-red-400 to-red-600 text-white font-bold rounded-lg text-xl 
-                    transform transition hover:scale-105 hover:shadow-xl"
+            className="flex-1 px-8 py-6 bg-gradient-to-r from-red-500 to-red-700 text-white font-bold rounded-lg text-lg 
+                    transform transition hover:scale-105 hover:shadow-xl flex flex-col justify-center items-center min-h-[120px] min-w-[220px]
+                    border border-red-300/30"
           >
-            PvP
+            <span className="block text-2xl tracking-wide text-red-100">PvP</span>
+            <span className="block text-base mt-1.5 font-normal">Play online random</span>
           </button>
+
+
           <button
-            onClick={() => navigate('/team-decorations')}
-            className="px-8 py-4 bg-gradient-to-r from-blue-400 to-indigo-500 text-white font-bold rounded-lg text-xl 
-                    transform transition hover:scale-105 hover:shadow-xl"
+            onClick={handleMultiplayerClick}
+            className="flex-1 px-8 py-6 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold rounded-lg text-lg 
+                    transform transition hover:scale-105 hover:shadow-xl flex flex-col justify-center items-center min-h-[120px] min-w-[220px]
+                    border border-purple-300/30"
           >
-            View Team Designs
+            <span className="block text-2xl tracking-wide text-purple-100">CreateLobby</span>
+            <span className="block text-base mt-1.5 font-normal">Play with friends</span>
           </button>
+          
+
+          
+          {/* Team Gallery button hidden for now
+          <button
+            className="flex-1 px-6 py-5 bg-gradient-to-r from-blue-400/50 to-indigo-500/50 text-white font-bold rounded-lg text-lg 
+                    transform transition opacity-60 cursor-not-allowed flex flex-col justify-center items-center min-h-[100px]"
+            disabled
+          >
+            <span className="block">Team Gallery</span>
+            <span className="block text-xs mt-1 font-normal opacity-60">View team decorations</span>
+          </button>
+          */}
         </div>
         
         {showMultiplayerWarning && (
@@ -81,6 +103,17 @@ export default function LandingPage() {
             </button>
           </motion.div>
         )}
+      </div>
+      
+      {/* Terms and Conditions Link */}
+      <div className="absolute bottom-4 right-4">
+        <button 
+          onClick={() => navigate('/terms')}
+          className="text-white/70 text-xs hover:text-white hover:underline flex items-center"
+        >
+          <span className="mr-1">📄</span>
+          Terms & Conditions
+        </button>
       </div>
     </div>
   );

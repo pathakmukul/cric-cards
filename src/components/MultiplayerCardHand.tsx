@@ -128,24 +128,24 @@ export const getBestStatsForCard = (card: any): string[] => {
 };
 
 // Helper function to get team color
-function getTeamColor(team) {
-  const teamColors = {
-    'MI': '#004BA0',
-    'CSK': '#FDB913',
-    'RCB': '#EC1C24',
-    'KKR': '#3A225D',
-    'DC': '#0078BC',
-    'PBKS': '#ED1B24',
-    'RR': '#E60693',
-    'SRH': '#FF822A',
-    'GT': '#1B2133',
-    'LSG': '#A7D5F6',
+function getTeamColor(team?: string): string {
+  const teamColors: Record<string, string> = {
+    'MUM': '#004BA0',
+    'CHE': '#FDB913',
+    'BLR': '#EC1C24',
+    'KOL': '#3A225D',
+    'DEL': '#0078BC',
+    'PUN': '#ED1B24',
+    'RAJ': '#E60693',
+    'HYD': '#FF822A',
+    'GUJ': '#1B2133',
+    'LKN': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#795548';
 }
 
 // Color utility functions
-function lightenColor(color, factor = 0.5) {
+function lightenColor(color: string, factor = 0.5): string {
   // Lighten a hex color by factor (0-1)
   const hex = color.replace('#', '');
   let r = parseInt(hex.substring(0, 2), 16);
@@ -159,7 +159,7 @@ function lightenColor(color, factor = 0.5) {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-function darkenColor(color, factor = 0.5) {
+function darkenColor(color: string, factor = 0.5): string {
   // Darken a hex color by factor (0-1)
   const hex = color.replace('#', '');
   let r = parseInt(hex.substring(0, 2), 16);

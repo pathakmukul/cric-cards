@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState, useRef, useMemo, memo } from 'react';
+import React, { Suspense, useEffect, useState, useRef, useMemo, memo, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Stars } from '@react-three/drei';
 import { useQuery, useMutation } from 'convex/react'; // Import Convex hooks
@@ -43,16 +43,16 @@ interface PlayerCardData {
 // --- Helper Functions (Keep as they are UI related) ---
 const getTeamColor = (team?: string): string => {
   const teamColors: Record<string, string> = {
-    'Mumbai Indians': '#004BA0',
-    'Chennai Super Kings': '#FDB913',
-    'Royal Challengers Bangalore': '#EC1C24',
-    'Kolkata Knight Riders': '#3A225D',
-    'Delhi Capitals': '#0078BC',
-    'Punjab Kings': '#ED1B24',
-    'Rajasthan Royals': '#254AA5',
-    'Sunrisers Hyderabad': '#FF822A',
-    'Gujarat Titans': '#1B2133',
-    'Lucknow Super Giants': '#A7D5F6',
+    'MUM': '#004BA0',
+    'CHE': '#FDB913',
+    'BLR': '#EC1C24',
+    'KOL': '#3A225D',
+    'DEL': '#0078BC',
+    'PUN': '#ED1B24',
+    'RAJ': '#254AA5',
+    'HYD': '#FF822A',
+    'GUJ': '#1B2133',
+    'LKN': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#1e40af';
 };
@@ -105,6 +105,10 @@ interface MultiplayerCardHandProps {
   gamePhase?: string;
   currentPlayer?: string;
   selectedStat?: string;
+  players?: string[];
+  playedCards?: any[];
+  leadingCardInfo?: any;
+  playerHands?: Record<string, any>;
 }
 
 // Memoized components to prevent unnecessary re-renders
@@ -131,15 +135,21 @@ const GameTable = memo(() => {
 });
 
 // Memoized card hand component
-const MemoizedCardHand = memo(MultiplayerCardHand, (prevProps, nextProps) => {
+const MemoizedCardHand = memo<MultiplayerCardHandProps>((props) => {
+  return <MultiplayerCardHand {...props} />;
+}, (prevProps, nextProps) => {
   // Only re-render when these specific props change
+  const playedCardsLengthEqual = 
+    (!prevProps.playedCards && !nextProps.playedCards) ||
+    (prevProps.playedCards?.length === nextProps.playedCards?.length);
+  
+  // Simple equality checks for primitive props
   return (
     prevProps.gamePhase === nextProps.gamePhase &&
     prevProps.isSelectable === nextProps.isSelectable &&
     prevProps.selectedStat === nextProps.selectedStat &&
     prevProps.cards.length === nextProps.cards.length &&
-    prevProps.playedCards.length === nextProps.playedCards.length &&
-    JSON.stringify(prevProps.leadingCardInfo) === JSON.stringify(nextProps.leadingCardInfo)
+    playedCardsLengthEqual
   );
 });
 
@@ -209,6 +219,14 @@ export default function MultiplayerGameBoard() {
   }, [lobbyData, playerName]);
 
   // Fetch details for the current player's hand cards
+  // Add a cache key that only changes when the card IDs change
+  const cardDetailsCacheKey = useMemo(() => JSON.stringify(userCardIds.sort()), [userCardIds]);
+  
+  // Add console logging to track when card details are fetched
+  useEffect(() => {
+    console.log(`[Card Loading] Fetching details for ${userCardIds.length} cards with cache key: ${cardDetailsCacheKey}`);
+  }, [cardDetailsCacheKey, userCardIds.length]);
+  
   const userHandCardsData = useQuery(
       api.cards.getCardDetails,
       userCardIds.length > 0 ? { cardIds: userCardIds } : "skip"
@@ -479,7 +497,7 @@ export default function MultiplayerGameBoard() {
     : cachedHand;
 
   // --- Action Handlers ---
-  const handleStatSelection = async (stat: string, cardId?: Id<"iplstats">) => {
+  const handleStatSelection = useCallback(async (stat: string, cardId?: Id<"iplstats">) => {
     // Extra validation
     if (!isMyTurn || gamePhase !== 'stat_selection' || !lobbyId || !playerName) {
         console.warn("Stat selection attempt failed validation:", { isMyTurn, gamePhase, lobbyId, playerName });
@@ -529,9 +547,9 @@ export default function MultiplayerGameBoard() {
       console.error("Failed to perform action:", err);
       setError(`Error: ${err.message || err}`);
     }
-  };
+  }, [isMyTurn, gamePhase, lobbyId, playerName, activeBooster, makeMove]);
 
-  const handleCardSelection = async (cardId: Id<"iplstats">, e?: React.MouseEvent | React.PointerEvent) => {
+  const handleCardSelection = useCallback(async (cardId: Id<"iplstats">, e?: React.MouseEvent | React.PointerEvent) => {
     // Stop event propagation to prevent duplicate calls - crucial fix for card play errors
     if (e) e.stopPropagation();
     
@@ -570,20 +588,20 @@ export default function MultiplayerGameBoard() {
       console.error("Failed to play card:", err);
       setError(`Error playing card: ${err.message || err}`);
     }
-  };
+  }, [isMyTurn, gamePhase, lobbyId, playerName, activeBooster, makeMove, selectedStat]);
 
-  const handleBoosterToggle = (booster: BoosterType) => {
+  const handleBoosterToggle = useCallback((booster: BoosterType) => {
     // Can only toggle if it's your turn, in card selection phase, and the booster is available
     if (!isMyTurn || gamePhase !== 'card_selection' || !userBoosters[booster]) return;
     setActiveBooster(current => current === booster ? null : booster); // Toggle active booster
-  };
+  }, [isMyTurn, gamePhase, userBoosters]);
 
-  const handleLeaveGame = () => {
+  const handleLeaveGame = useCallback(() => {
       // Simple leave - just navigate away. Backend might need cleanup (e.g., mark lobby abandoned).
       localStorage.removeItem('cricCards_lobbyId');
       localStorage.removeItem('cricCards_isHost'); // May not be relevant here but good practice
       navigate('/lobby');
-  };
+  }, [navigate]);
   
   // Get all cards for the game setup
   const allCardsRaw = useQuery(api.cards.getAll) || [];
@@ -1011,7 +1029,7 @@ export default function MultiplayerGameBoard() {
       <div className="absolute top-0 left-0 right-0 p-4 bg-blue-900/90 backdrop-blur-md z-10 border-b border-blue-700">
         <div className="flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-bold text-white">IPL Cricket Cards - Multiplayer</h1>
+            <h1 className="text-xl font-bold text-white">IT20 Cricket Cards - Multiplayer</h1>
             <div className="flex items-center space-x-2 bg-blue-800/50 px-3 py-1 rounded-lg">
               <span className="text-sm text-gray-300">Round:</span>
               <span className="text-lg font-bold text-white">
@@ -1089,13 +1107,6 @@ export default function MultiplayerGameBoard() {
           <p className="text-xl text-white">Waiting for game to start...</p>
         </div>
       )}
-      
-      {/* Debug console log */}
-      {console.log("Debug Played Cards:", { 
-        hasCards: currentHandPlayedCards && currentHandPlayedCards.length > 0, 
-        selectedStat: gameState.selectedStat,
-        numCards: currentHandPlayedCards?.length || 0
-      })}
     </div>
   );
 }

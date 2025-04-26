@@ -15,6 +15,7 @@ import type {
 } from "convex/server";
 import type * as cards from "../cards.js";
 import type * as multiplayer from "../multiplayer.js";
+import type * as nameswitch from "../nameswitch.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -27,6 +28,7 @@ import type * as multiplayer from "../multiplayer.js";
 declare const fullApi: ApiFromModules<{
   cards: typeof cards;
   multiplayer: typeof multiplayer;
+  nameswitch: typeof nameswitch;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

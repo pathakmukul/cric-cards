@@ -40,26 +40,16 @@ function darkenColor(color: string, factor = 0.5) {
 // Helper function to get team color
 function getTeamColor(team?: string) {
   const teamColors: Record<string, string> = {
-    'Mumbai Indians': '#004BA0',
-    'MI': '#004BA0',
-    'Chennai Super Kings': '#FDB913',
-    'CSK': '#FDB913',
-    'Royal Challengers Bangalore': '#EC1C24',
-    'RCB': '#EC1C24',
-    'Kolkata Knight Riders': '#3A225D',
-    'KKR': '#3A225D',
-    'Delhi Capitals': '#0078BC',
-    'DC': '#0078BC',
-    'Punjab Kings': '#ED1B24',
-    'PBKS': '#ED1B24',
-    'Rajasthan Royals': '#254AA5',
-    'RR': '#254AA5',
-    'Sunrisers Hyderabad': '#FF822A',
-    'SRH': '#FF822A',
-    'Gujarat Titans': '#1B2133',
-    'GT': '#1B2133',
-    'Lucknow Super Giants': '#A7D5F6',
-    'LSG': '#A7D5F6',
+    'MUM': '#004BA0',
+    'CHE': '#FDB913',
+    'BLR': '#EC1C24',
+    'KOL': '#3A225D',
+    'DEL': '#0078BC',
+    'PUN': '#ED1B24',
+    'RAJ': '#254AA5',
+    'HYD': '#FF822A',
+    'GUJ': '#1B2133',
+    'LKN': '#A7D5F6',
   };
   return team && teamColors[team] ? teamColors[team] : '#795548';
 }
@@ -121,7 +111,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   const isCardSelectionWithStatChosen = gamePhase === 'card_selection' && selectedStat;
   
   // Scale based on hover/selected state
-  const cardScale = isSelected || isHovered ? [1.05, 1.05, 1.05] : [1, 1, 1];
+  const cardScale = isSelected || isHovered ? [1.05, 1.05, 1.05] as [number, number, number] : [1, 1, 1] as [number, number, number];
   
   return (
     <group 

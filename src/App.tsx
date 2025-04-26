@@ -5,6 +5,7 @@ import LobbyPage from './components/LobbyPage';
 import GameBoard from './components/GameBoard';
 import MultiplayerGameBoard from './components/MultiplayerGameBoard';
 import TeamDecorationShowcase from './components/decorations/TeamDecorationShowcase';
+import TermsAndConditions from './components/TermsAndConditions';
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
@@ -60,6 +61,7 @@ function App() {
         } />
         <Route path="/team-decorations" element={<TeamDecorationShowcase />} />
         <Route path="/pvp" element={<LobbyPage isPvP />} />
+        <Route path="/terms" element={<TermsAndConditions />} />
       </Routes>
     </ConvexProvider>
   );

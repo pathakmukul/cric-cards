@@ -82,16 +82,16 @@ const teamConfigs: Record<string, {
   blending?: Blending; 
   materialTintColor?: string; 
 }> = {
-  CSK:  { svgPath: '/chn.svg', color: '#e8da00', blending: THREE.NormalBlending }, 
-  RCB:  { svgPath: '/blr.svg', color: '#FF1C24' },
-  PBKS: { svgPath: '/pnb.svg', color: '#ED1B24' },
-  MI:   { svgPath: '/mi.svg',  color: '#0065AA', blending: THREE.NormalBlending }, 
-  RR:   { svgPath: '/rr.svg',  color: '#E60693' },
-  SRH:  { svgPath: '/srh.svg', color: '#FF822A', blending: THREE.NormalBlending }, 
-  LSG:  { svgPath: '/lsg.svg', color: '#A7D5F6' }, 
-  GT:   { svgPath: '/gt.svg',  color: '#1B2133', materialTintColor: '#ffffff' }, // Override tint to white
-  KKR:  { svgPath: '/kkr.svg', color: '#552583' },
-  DC:   { svgPath: '/dc.svg',  color: '#D71921', blending: THREE.NormalBlending, materialTintColor: '#ffffff' }, // Override tint to white
+  CHE:  { svgPath: '/chn.svg', color: '#e8da00', blending: THREE.NormalBlending }, 
+  BLR:  { svgPath: '/blr.svg', color: '#FF1C24' },
+  PUN: { svgPath: '/pnb.svg', color: '#ED1B24' },
+  MUM:   { svgPath: '/mi.svg',  color: '#0065AA', blending: THREE.NormalBlending }, 
+  RAJ:   { svgPath: '/rr.svg',  color: '#E60693' },
+  HYD:  { svgPath: '/srh.svg', color: '#FF822A', blending: THREE.NormalBlending }, 
+  LKN:  { svgPath: '/lsg.svg', color: '#A7D5F6' }, 
+  GUJ:   { svgPath: '/gt.svg',  color: '#1B2133', materialTintColor: '#ffffff' }, // Override tint to white
+  KOL:  { svgPath: '/kkr.svg', color: '#552583' },
+  DEL:   { svgPath: '/dc.svg',  color: '#D71921', blending: THREE.NormalBlending, materialTintColor: '#ffffff' }, // Override tint to white
 };
 
 // Updated function to get team-specific decoration elements

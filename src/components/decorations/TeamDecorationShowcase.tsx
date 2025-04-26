@@ -4,8 +4,8 @@ import { OrbitControls, Text } from '@react-three/drei';
 import { getTeamDecoration } from './TeamDecorations';
 import * as THREE from 'three';
 
-// List of all IPL teams
-const IPL_TEAMS = [
+// List of all IT20 teams
+const IT20_TEAMS = [
   'CSK',
   'RCB',
   'PBKS',
@@ -100,7 +100,7 @@ export default function TeamDecorationShowcase() {
         
         {/* Arrange cards in a grid */}
         <group>
-          {IPL_TEAMS.map((team, index) => {
+          {IT20_TEAMS.map((team, index) => {
             // Calculate position in a 3x4 grid
             const row = Math.floor(index / 5);
             const col = index % 5;

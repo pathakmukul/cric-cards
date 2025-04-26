@@ -6,31 +6,25 @@ import { Doc, Id } from './_generated/dataModel';
 export const getAll = query({
   args: {},
   handler: async (ctx) => {
-    // Use iplstats as the fallback if stats_2025 doesn't exist
     try {
-      const data = await ctx.db.query('iplstats').collect();
-      return data.map(player => ({
-        _id: player._id,
-        Player_Name: player.Player_Name,
-        team: player.team,
-        // Use real data from the database with 0 as fallback
-        Runs_Scored: player.Runs_Scored || 0,
-        Batting_Average: player.Batting_Average || 0,
-        Batting_Strike_Rate: player.Batting_Strike_Rate || 0,
-        Centuries: player.Centuries || 0,
-        Half_Centuries: player.Half_Centuries || 0,
-        Sixes: player.Sixes || 0,
-        Fours: player.Fours || 0,
-        Highest_Score: player.Highest_Score || '0',
-        Wickets_Taken: player.Wickets_Taken || 0,
-        Economy_Rate: player.Economy_Rate || 0,
-        Bowling_Average: player.Bowling_Average || 0,
-        Bowling_Strike_Rate: player.Bowling_Strike_Rate || 0,
-        Four_Wicket_Hauls: player.Four_Wicket_Hauls || 0,
-        Five_Wicket_Hauls: player.Five_Wicket_Hauls || 0
-      }));
+      // Filter at the database level - only reject cards where 
+      // BOTH Balls_Bowled AND Balls_Faced are zero or null
+      const data = await ctx.db.query('iplstats')
+        .filter(q => 
+          q.not(
+            q.and(
+              q.or(q.eq(q.field("Balls_Bowled"), 0), q.eq(q.field("Balls_Bowled"), null)),
+              q.or(q.eq(q.field("Balls_Faced"), 0), q.eq(q.field("Balls_Faced"), null))
+            )
+          )
+        )
+        .collect();
+      
+      console.log(`Returning ${data.length} cards with either balls bowled or faced > 0 from database query`);
+      
+      return data;
     } catch (error) {
-      // Log error silently
+      console.error("Error fetching cards:", error);
       return [];
     }
   },
@@ -96,14 +90,19 @@ export const getCardDetails = query({
     cardIds: v.array(v.id("iplstats"))
   },
   handler: async (ctx, args) => {
-    // Fetch each card document. Use Promise.all for parallel fetching.
+    if (args.cardIds.length === 0) {
+      return [];
+    }
+    
+    // Since we're fetching specific card IDs that were already filtered by getAll
+    // or are actively being used in a game, we can simply return them
     const cardDetails = await Promise.all(
       args.cardIds.map(cardId => ctx.db.get(cardId))
     );
     
-    // Filter out any null results (if an ID didn't exist)
-    // and return the array of card documents.
-    // Explicitly type the result to match frontend expectations if needed.
-    return cardDetails.filter(card => card !== null) as Doc<"iplstats">[];
+    // Just filter out null results (IDs that don't exist)
+    const validCards = cardDetails.filter(card => card !== null) as Doc<"iplstats">[];
+    
+    return validCards;
   },
 });
