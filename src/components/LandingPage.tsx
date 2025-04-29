@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faXTwitter } from '@fortawesome/free-brands-svg-icons';
+import { ConvexNudge } from '@convex-nudge/react';
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -288,8 +289,10 @@ export default function LandingPage() {
       </div>
       
       {/* Footer Links */}
-      <div className="absolute bottom-4 right-4 flex items-center space-x-4">
+      
+      <div className="absolute bottom-4 right-4 flex items-center space-x-6">
         {/* X (formerly Twitter) Contact Icon */}
+        
         <a
           href="https://x.com/pathuglife"
           target="_blank"
@@ -299,6 +302,40 @@ export default function LandingPage() {
           <FontAwesomeIcon icon={faXTwitter} size="lg" />
         </a>
         
+        {/* Convex Nudge Widget */}
+       
+        {/* Terms and Conditions Link */}
+        <button 
+          onClick={() => navigate('/terms')}
+          className="text-white/70 text-xs hover:text-white hover:underline flex items-center"
+        >
+          <span className="mr-1">📄</span>
+          Terms & Conditions
+        </button>
+      </div>
+      
+      {/* Convex Nudge - Inline in footer, forced white text */}
+      <style>{`.convex-nudge * { color: #fff !important; }`}</style>
+      <div className="absolute bottom-4 right-4 flex items-center space-x-6">
+        {/* X (formerly Twitter) Contact Icon */}
+        {/* <a
+          href="https://x.com/pathuglife"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/70 hover:text-white"
+        >
+          <FontAwesomeIcon icon={faXTwitter} size="lg" />
+        </a> */}
+        {/* Convex Nudge Widget */}
+        <div className="convex-nudge flex items-center">
+          <ConvexNudge
+            variant="purple"
+            position="bottom-right"
+            animation="slide"
+            project="giant-firefly-526"
+            theme="dark"
+          />
+        </div>
         {/* Terms and Conditions Link */}
         <button 
           onClick={() => navigate('/terms')}
